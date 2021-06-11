@@ -2,7 +2,7 @@
 // Licensed under the MIT license.
 // Author: Paul Koch <code@koch.ninja>
 
-#include "PrecompiledHeader.h"
+#include "precompiled_header_cpp.hpp"
 
 // TODO: use noexcept throughout our codebase (exception extern "C" functions) !  The compiler can optimize functions better if it knows there are no exceptions
 // TODO: review all the C++ library calls, including things like std::abs and verify that none of them throw exceptions, otherwise use the C versions that provide this guarantee
@@ -14,7 +14,7 @@
 #include "logging.h"
 #include "zones.h"
 
-#include "EbmInternal.h"
+#include "ebm_internal.hpp"
 
 namespace DEFINED_ZONE_NAME {
 #ifndef DEFINED_ZONE_NAME
@@ -165,6 +165,8 @@ EBM_NATIVE_IMPORT_EXPORT_BODY IntEbmType EBM_NATIVE_CALLING_CONVENTION Discretiz
    // bin is in the Nth item because we then need to know what N is and use multiplication and badly ordered memory
    // accesses to reach it if we want to use the missing bin during cutting.  Lastly, in higher level languages, it's
    // easier to detect missing values in the discretized data, since it's always just a zero.
+   //
+   // this function has exactly the same behavior as numpy.digitize, including the lower bound inclusive semantics
    
    LOG_COUNTED_N(
       &g_cLogEnterDiscretizeParametersMessages,

@@ -41,7 +41,7 @@ extern "C" {
 // R has it's own way of exporting functions.  There is a single entry point that describes to 
 // R how to call our functions.  Also, we export R specific functions rather than the generic 
 // ones that we can consume from other languages
-#define EBM_NATIVE_IMPORT_EXPORT_BODY extern
+#define EBM_NATIVE_IMPORT_EXPORT_BODY EBM_EXTERN_C
 #else // EBM_NATIVE_R
 #define EBM_NATIVE_IMPORT_EXPORT_BODY EBM_EXTERN_C __attribute__ ((visibility ("default")))
 #endif // EBM_NATIVE_R
@@ -55,7 +55,7 @@ extern "C" {
 // R how to call our functions.  Also, we export R specific functions rather than the generic 
 // ones that we can consume from other languages
 #define EBM_NATIVE_IMPORT_EXPORT_INCLUDE extern
-#define EBM_NATIVE_IMPORT_EXPORT_BODY extern
+#define EBM_NATIVE_IMPORT_EXPORT_BODY EBM_EXTERN_C
 #else // EBM_NATIVE_R
 
 #ifdef EBM_NATIVE_EXPORTS
@@ -149,31 +149,37 @@ typedef int32_t SeedEbmType;
 #define SeedEbmTypePrintf PRId32
 typedef int32_t TraceEbmType;
 #define TraceEbmTypePrintf PRId32
-typedef IntEbmType BoolEbmType;
-#define BoolEbmTypePrintf IntEbmTypePrintf
-typedef IntEbmType ErrorEbmType;
-#define ErrorEbmTypePrintf IntEbmTypePrintf
-typedef IntEbmType GenerateUpdateOptionsType;
+typedef int64_t BoolEbmType;
+#define BoolEbmTypePrintf PRId64
+typedef int32_t ErrorEbmType;
+#define ErrorEbmTypePrintf PRId32
+typedef int64_t GenerateUpdateOptionsType;
 // technically printf hexidecimals are unsigned, so convert it first to unsigned before calling printf
-typedef UIntEbmType UGenerateUpdateOptionsType;
+typedef uint64_t UGenerateUpdateOptionsType;
 #define UGenerateUpdateOptionsTypePrintf PRIx64
 
 #define EBM_FALSE          (EBM_BOOL_CAST(0))
 #define EBM_TRUE           (EBM_BOOL_CAST(1))
 
-#define Error_None                                    (EBM_ERROR_CAST(0))
-#define Error_OutOfMemory                             (EBM_ERROR_CAST(1))
-#define Error_UnknownInternalError                    (EBM_ERROR_CAST(2))
-#define Error_LossConstructorException                (EBM_ERROR_CAST(3))
-#define Error_LossParameterUnknown                    (EBM_ERROR_CAST(4))
-#define Error_LossParameterValueMalformed             (EBM_ERROR_CAST(5))
-#define Error_LossParameterValueOutOfRange            (EBM_ERROR_CAST(6))
-#define Error_LossParameterMismatchWithConfig         (EBM_ERROR_CAST(7))
-#define Error_LossUnknown                             (EBM_ERROR_CAST(8))
-#define Error_LossIllegalRegistrationName             (EBM_ERROR_CAST(10))
-#define Error_LossIllegalParamName                    (EBM_ERROR_CAST(11))
-#define Error_LossDuplicateParamName                  (EBM_ERROR_CAST(12))
-#define Error_InvalidParameter                        (EBM_ERROR_CAST(13))
+#define Error_None                                 (EBM_ERROR_CAST(0))
+// reserve the return code 1 as illegal, since 1 is often "TRUE"
+#define Error_OutOfMemory                          (EBM_ERROR_CAST(2))
+// errors occuring entirely within the C/C++ code
+#define Error_UnexpectedInternal                   (EBM_ERROR_CAST(3))
+// input parameters received that are clearly due to bugs in the higher level caller
+#define Error_IllegalParamValue                    (EBM_ERROR_CAST(4))
+// input parameters received from the end user that are illegal.  These should have been filtered by our caller
+#define Error_UserParamValue                       (EBM_ERROR_CAST(5))
+
+#define Error_LossConstructorException             (EBM_ERROR_CAST(6))
+#define Error_LossParamUnknown                     (EBM_ERROR_CAST(7))
+#define Error_LossParamValueMalformed              (EBM_ERROR_CAST(8))
+#define Error_LossParamValueOutOfRange             (EBM_ERROR_CAST(9))
+#define Error_LossParamMismatchWithConfig          (EBM_ERROR_CAST(10))
+#define Error_LossUnknown                          (EBM_ERROR_CAST(11))
+#define Error_LossIllegalRegistrationName          (EBM_ERROR_CAST(12))
+#define Error_LossIllegalParamName                 (EBM_ERROR_CAST(13))
+#define Error_LossDuplicateParamName               (EBM_ERROR_CAST(14))
 
 #define GenerateUpdateOptions_Default              (EBM_GENERATE_UPDATE_OPTIONS_CAST(0x0000000000000000))
 #define GenerateUpdateOptions_DisableNewtonGain    (EBM_GENERATE_UPDATE_OPTIONS_CAST(0x0000000000000001))
@@ -369,7 +375,7 @@ EBM_NATIVE_IMPORT_EXPORT_INCLUDE SeedEbmType EBM_NATIVE_CALLING_CONVENTION Gener
    SeedEbmType stageRandomizationMix
 );
 
-EBM_NATIVE_IMPORT_EXPORT_INCLUDE IntEbmType EBM_NATIVE_CALLING_CONVENTION GenerateQuantileCuts(
+EBM_NATIVE_IMPORT_EXPORT_INCLUDE IntEbmType EBM_NATIVE_CALLING_CONVENTION CutQuantile(
    IntEbmType countSamples,
    const FloatEbmType * featureValues,
    IntEbmType countSamplesPerBinMin,
@@ -382,7 +388,7 @@ EBM_NATIVE_IMPORT_EXPORT_INCLUDE IntEbmType EBM_NATIVE_CALLING_CONVENTION Genera
    FloatEbmType * maxNonInfinityValueOut,
    IntEbmType * countPositiveInfinityOut
 );
-EBM_NATIVE_IMPORT_EXPORT_INCLUDE void EBM_NATIVE_CALLING_CONVENTION GenerateUniformCuts(
+EBM_NATIVE_IMPORT_EXPORT_INCLUDE void EBM_NATIVE_CALLING_CONVENTION CutUniform(
    IntEbmType countSamples,
    const FloatEbmType * featureValues,
    IntEbmType * countCutsInOut,
@@ -393,7 +399,7 @@ EBM_NATIVE_IMPORT_EXPORT_INCLUDE void EBM_NATIVE_CALLING_CONVENTION GenerateUnif
    FloatEbmType * maxNonInfinityValueOut,
    IntEbmType * countPositiveInfinityOut
 );
-EBM_NATIVE_IMPORT_EXPORT_INCLUDE IntEbmType EBM_NATIVE_CALLING_CONVENTION GenerateWinsorizedCuts(
+EBM_NATIVE_IMPORT_EXPORT_INCLUDE IntEbmType EBM_NATIVE_CALLING_CONVENTION CutWinsorized(
    IntEbmType countSamples,
    const FloatEbmType * featureValues,
    IntEbmType * countCutsInOut,
@@ -405,7 +411,7 @@ EBM_NATIVE_IMPORT_EXPORT_INCLUDE IntEbmType EBM_NATIVE_CALLING_CONVENTION Genera
    IntEbmType * countPositiveInfinityOut
 );
 
-EBM_NATIVE_IMPORT_EXPORT_INCLUDE void EBM_NATIVE_CALLING_CONVENTION SuggestGraphBounds(
+EBM_NATIVE_IMPORT_EXPORT_INCLUDE ErrorEbmType EBM_NATIVE_CALLING_CONVENTION SuggestGraphBounds(
    IntEbmType countCuts,
    FloatEbmType lowestCut,
    FloatEbmType highestCut,
@@ -449,12 +455,12 @@ EBM_NATIVE_IMPORT_EXPORT_INCLUDE ErrorEbmType EBM_NATIVE_CALLING_CONVENTION Stra
 EBM_NATIVE_IMPORT_EXPORT_INCLUDE BoosterHandle EBM_NATIVE_CALLING_CONVENTION CreateClassificationBooster(
    SeedEbmType randomSeed,
    IntEbmType countTargetClasses,
-   IntEbmType countFeatureAtomics,
-   const BoolEbmType * featureAtomicsCategorical,
-   const IntEbmType * featureAtomicsBinCount,
+   IntEbmType countFeatures,
+   const BoolEbmType * featuresCategorical,
+   const IntEbmType * featuresBinCount,
    IntEbmType countFeatureGroups,
    const IntEbmType * featureGroupsDimensionCount,
-   const IntEbmType * featureGroupsFeatureAtomicIndexes,
+   const IntEbmType * featureGroupsFeatureIndexes,
    IntEbmType countTrainingSamples,
    const IntEbmType * trainingBinnedData,
    const IntEbmType * trainingTargets,
@@ -470,12 +476,12 @@ EBM_NATIVE_IMPORT_EXPORT_INCLUDE BoosterHandle EBM_NATIVE_CALLING_CONVENTION Cre
 );
 EBM_NATIVE_IMPORT_EXPORT_INCLUDE BoosterHandle EBM_NATIVE_CALLING_CONVENTION CreateRegressionBooster(
    SeedEbmType randomSeed,
-   IntEbmType countFeatureAtomics,
-   const BoolEbmType * featureAtomicsCategorical,
-   const IntEbmType * featureAtomicsBinCount,
+   IntEbmType countFeatures,
+   const BoolEbmType * featuresCategorical,
+   const IntEbmType * featuresBinCount,
    IntEbmType countFeatureGroups,
    const IntEbmType * featureGroupsDimensionCount, 
-   const IntEbmType * featureGroupsFeatureAtomicIndexes, 
+   const IntEbmType * featureGroupsFeatureIndexes, 
    IntEbmType countTrainingSamples,
    const IntEbmType * trainingBinnedData, 
    const FloatEbmType * trainingTargets,
@@ -531,6 +537,8 @@ EBM_NATIVE_IMPORT_EXPORT_INCLUDE void EBM_NATIVE_CALLING_CONVENTION FreeBooster(
    BoosterHandle boosterHandle
 );
 
+// TODO : elimiante this as a public object and just expose a BoosterHandle which will be for the shell object
+//        and also expose a CreateBoosterView which will copy the shell boster and refer to the same core booster
 EBM_NATIVE_IMPORT_EXPORT_INCLUDE ThreadStateBoostingHandle EBM_NATIVE_CALLING_CONVENTION CreateThreadStateBoosting(
    BoosterHandle boosterHandle
 );
@@ -541,9 +549,9 @@ EBM_NATIVE_IMPORT_EXPORT_INCLUDE void EBM_NATIVE_CALLING_CONVENTION FreeThreadSt
 
 EBM_NATIVE_IMPORT_EXPORT_INCLUDE InteractionDetectorHandle EBM_NATIVE_CALLING_CONVENTION CreateClassificationInteractionDetector(
    IntEbmType countTargetClasses,
-   IntEbmType countFeatureAtomics,
-   const BoolEbmType * featureAtomicsCategorical,
-   const IntEbmType * featureAtomicsBinCount,
+   IntEbmType countFeatures,
+   const BoolEbmType * featuresCategorical,
+   const IntEbmType * featuresBinCount,
    IntEbmType countSamples,
    const IntEbmType * binnedData,
    const IntEbmType * targets,
@@ -552,9 +560,9 @@ EBM_NATIVE_IMPORT_EXPORT_INCLUDE InteractionDetectorHandle EBM_NATIVE_CALLING_CO
    const FloatEbmType * optionalTempParams
 );
 EBM_NATIVE_IMPORT_EXPORT_INCLUDE InteractionDetectorHandle EBM_NATIVE_CALLING_CONVENTION CreateRegressionInteractionDetector(
-   IntEbmType countFeatureAtomics, 
-   const BoolEbmType * featureAtomicsCategorical,
-   const IntEbmType * featureAtomicsBinCount,
+   IntEbmType countFeatures, 
+   const BoolEbmType * featuresCategorical,
+   const IntEbmType * featuresBinCount,
    IntEbmType countSamples,
    const IntEbmType * binnedData, 
    const FloatEbmType * targets,
@@ -565,7 +573,7 @@ EBM_NATIVE_IMPORT_EXPORT_INCLUDE InteractionDetectorHandle EBM_NATIVE_CALLING_CO
 EBM_NATIVE_IMPORT_EXPORT_INCLUDE IntEbmType EBM_NATIVE_CALLING_CONVENTION CalculateInteractionScore(
    InteractionDetectorHandle interactionDetectorHandle, 
    IntEbmType countDimensions,
-   const IntEbmType * featureAtomicIndexes,
+   const IntEbmType * featureIndexes,
    IntEbmType countSamplesRequiredForChildSplitMin,
    FloatEbmType * interactionScoreOut
 );

@@ -2,10 +2,10 @@
 // Licensed under the MIT license.
 // Author: Paul Koch <code@koch.ninja>
 
-#include "PrecompiledHeader.h"
+#include "precompiled_header_cpp.hpp"
 
 #include <cmath>
-#include <immintrin.h> // SIMD.  Do not include in PrecompiledHeader.h!
+#include <immintrin.h> // SIMD.  Do not include in precompiled_header_cpp.hpp!
 
 #include "ebm_native.h"
 #include "logging.h"
@@ -25,6 +25,7 @@ namespace DEFINED_ZONE_NAME {
 #endif // DEFINED_ZONE_NAME
 
 struct Sse_32_Operators final {
+   constexpr static size_t countPackedItems = 4; // the number of Unpacked items in a Packed structure
    typedef float Unpacked;
    typedef __m128 Packed;
 
@@ -107,9 +108,12 @@ public:
       return Error_None;
    }
 };
-static_assert(std::is_standard_layout<Sse_32_Operators>::value &&
-   std::is_trivially_copyable<Sse_32_Operators>::value,
+static_assert(std::is_standard_layout<Sse_32_Operators>::value,
    "This allows offsetof, memcpy, memset, inter-language, GPU and cross-machine use where needed");
+#if !(defined(__GNUC__) && __GNUC__ < 5)
+static_assert(std::is_trivially_copyable<Sse_32_Operators>::value,
+   "This allows offsetof, memcpy, memset, inter-language, GPU and cross-machine use where needed");
+#endif // !(defined(__GNUC__) && __GNUC__ < 5)
 
 // FIRST, define the RegisterLoss function that we'll be calling from our registrations.  This is a static 
 // function, so we can have duplicate named functions in other files and they'll refer to different functions
@@ -140,7 +144,7 @@ INTERNAL_IMPORT_EXPORT_BODY ErrorEbmType CreateMetric_Sse_32(
    UNUSED(sMetric);
    UNUSED(sMetricEnd);
 
-   return Error_UnknownInternalError;
+   return Error_UnexpectedInternal;
 }
 
 } // DEFINED_ZONE_NAME

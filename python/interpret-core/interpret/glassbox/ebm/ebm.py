@@ -201,7 +201,7 @@ class EBMPreprocessor(BaseEstimator, TransformerMixin):
                         count_missing, 
                         min_val, 
                         max_val, 
-                    ) = native.generate_quantile_cuts(
+                    ) = native.cut_quantile(
                         col_data, 
                         min_samples_bin, 
                         is_humanized, 
@@ -213,7 +213,7 @@ class EBMPreprocessor(BaseEstimator, TransformerMixin):
                         count_missing, 
                         min_val, 
                         max_val,
-                    ) = native.generate_uniform_cuts(
+                    ) = native.cut_uniform(
                         col_data, 
                         self.max_bins - 2, # one bin for missing, and # of cuts is one less again
                     )
@@ -930,6 +930,22 @@ class BaseEBM(BaseEstimator):
         elif isinstance(self.interactions, list):
             pair_indices = self.interactions
             if len(pair_indices) != 0:
+                # Check and remove duplicate interaction terms
+                existing_terms = set()
+                unique_terms = []
+
+                for i, term in enumerate(pair_indices):
+                    sorted_tuple = tuple(sorted(term))
+                    if sorted_tuple not in existing_terms:
+                        existing_terms.add(sorted_tuple)
+                        unique_terms.append(term)
+
+                # Warn the users that we have made change to the interactions list
+                if len(unique_terms) != len(pair_indices):
+                    warn("Detected duplicate interaction terms: removing duplicate interaction terms")
+                    pair_indices = unique_terms
+                    self.interactions = pair_indices
+
                 # Retrain interactions for base models
                 def staged_fit_fn(estimator, X, y, w, X_pair, inter_indices=[]):
                     return estimator.staged_fit_interactions_parallel(
@@ -1535,7 +1551,7 @@ class ExplainableBoostingClassifier(BaseEBM, ClassifierMixin, ExplainerMixin):
             self.classes_,
         )
 
-    def predict_and_explain(self, X, output='probabilities'):
+    def predict_and_contrib(self, X, output='probabilities'):
         """Predicts on provided samples, returning predictions and explanations for each sample.
 
         Args:
@@ -1565,7 +1581,7 @@ class ExplainableBoostingClassifier(BaseEBM, ClassifierMixin, ExplainerMixin):
         else:
             X_pair = None
 
-        return EBMUtils.classifier_predict_and_explain(
+        return EBMUtils.classifier_predict_and_contrib(
             X,
             X_pair,
             self.feature_groups_,
@@ -1687,7 +1703,7 @@ class ExplainableBoostingRegressor(BaseEBM, RegressorMixin, ExplainerMixin):
         )
 
 
-    def predict_and_explain(self, X):
+    def predict_and_contrib(self, X):
         """Predicts on provided samples, returning predictions and explanations for each sample.
 
         Args:
@@ -1710,6 +1726,6 @@ class ExplainableBoostingRegressor(BaseEBM, RegressorMixin, ExplainerMixin):
         else:
             X_pair = None
 
-        return EBMUtils.regressor_predict_and_explain(
+        return EBMUtils.regressor_predict_and_contrib(
             X, X_pair, self.feature_groups_, self.additive_terms_, self.intercept_
         )

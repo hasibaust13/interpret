@@ -2,7 +2,7 @@
 // Licensed under the MIT license.
 // Author: Paul Koch <code@koch.ninja>
 
-#include "PrecompiledHeader.h"
+#include "precompiled_header_cpp.hpp"
 
 #include <cmath>
 
@@ -24,6 +24,7 @@ namespace DEFINED_ZONE_NAME {
 #endif // DEFINED_ZONE_NAME
 
 struct Cpu_64_Operators final {
+   constexpr static size_t countPackedItems = 1; // the number of Unpacked items in a Packed structure
    typedef double Unpacked;
    typedef double Packed;
 
@@ -78,6 +79,16 @@ public:
       return Cpu_64_Operators(std::sqrt(m_data));
    }
 
+   INLINE_ALWAYS Unpacked GetUnpacked(const size_t indexPack) const noexcept {
+      UNUSED(indexPack);
+      return m_data; // we only have 1 packed item
+   }
+
+   INLINE_ALWAYS void SetUnpacked(const size_t indexPack, const Unpacked data) noexcept {
+      UNUSED(indexPack);
+      m_data = data; // we only have 1 packed item
+   }
+
    template<template <typename, typename, ptrdiff_t, ptrdiff_t, bool> class TExecute, typename TLoss, typename TFloat, ptrdiff_t cCompilerScores, ptrdiff_t cCompilerPack, bool bHessian>
    INLINE_RELEASE_TEMPLATED static ErrorEbmType ApplyTraining(const Loss * const pLoss, ApplyTrainingData * const pData) {
       // this allows us to switch execution onto GPU, FPGA, or other local computation
@@ -101,9 +112,12 @@ public:
       return Error_None;
    }
 };
-static_assert(std::is_standard_layout<Cpu_64_Operators>::value &&
-   std::is_trivially_copyable<Cpu_64_Operators>::value,
+static_assert(std::is_standard_layout<Cpu_64_Operators>::value,
    "This allows offsetof, memcpy, memset, inter-language, GPU and cross-machine use where needed");
+#if !(defined(__GNUC__) && __GNUC__ < 5)
+static_assert(std::is_trivially_copyable<Cpu_64_Operators>::value,
+   "This allows offsetof, memcpy, memset, inter-language, GPU and cross-machine use where needed");
+#endif // !(defined(__GNUC__) && __GNUC__ < 5)
 
 // FIRST, define the RegisterLoss function that we'll be calling from our registrations.  This is a static 
 // function, so we can have duplicate named functions in other files and they'll refer to different functions
@@ -134,7 +148,7 @@ INTERNAL_IMPORT_EXPORT_BODY ErrorEbmType CreateMetric_Cpu_64(
    UNUSED(sMetric);
    UNUSED(sMetricEnd);
 
-   return Error_UnknownInternalError;
+   return Error_UnexpectedInternal;
 }
 
 

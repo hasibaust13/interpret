@@ -2,8 +2,8 @@
 // Licensed under the MIT license.
 // Author: Paul Koch <code@koch.ninja>
 
-#ifndef COMPUTE_H
-#define COMPUTE_H
+#ifndef COMPUTE_HPP
+#define COMPUTE_HPP
 
 #include <stddef.h> // size_t, ptrdiff_t
 
@@ -53,7 +53,7 @@ static_assert(
 constexpr static ptrdiff_t k_cItemsPerBitPackMax2 = ptrdiff_t { k_cBitsForStorageType };
 static_assert(k_cItemsPerBitPackMax2 <= ptrdiff_t { k_cBitsForStorageType }, "k_cItemsPerBitPackMax too big");
 constexpr static ptrdiff_t k_cItemsPerBitPackMin2 = ptrdiff_t { 1 };
-static_assert(1 <= k_cItemsPerBitPackMin2 || k_cItemsPerBitPackDynamic2 == k_cItemsPerBitPackMin2 && k_cItemsPerBitPackDynamic2 == k_cItemsPerBitPackMax2, "k_cItemsPerBitPackMin must be positive and can only be zero if both min and max are zero (which means we only use dynamic)");
+static_assert(1 <= k_cItemsPerBitPackMin2 || (k_cItemsPerBitPackDynamic2 == k_cItemsPerBitPackMin2 && k_cItemsPerBitPackDynamic2 == k_cItemsPerBitPackMax2), "k_cItemsPerBitPackMin must be positive and can only be zero if both min and max are zero (which means we only use dynamic)");
 static_assert(k_cItemsPerBitPackMin2 <= k_cItemsPerBitPackMax2, "bit pack max less than min");
 static_assert(
    k_cItemsPerBitPackDynamic2 == k_cItemsPerBitPackMin2 ||
@@ -81,4 +81,4 @@ INLINE_ALWAYS constexpr static ptrdiff_t GetNextBitPack(const ptrdiff_t cItemsBi
 
 } // DEFINED_ZONE_NAME
 
-#endif // COMPUTE_H
+#endif // COMPUTE_HPP
