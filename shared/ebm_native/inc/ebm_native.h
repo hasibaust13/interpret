@@ -93,17 +93,11 @@ typedef struct _BoosterHandle {
    char unused;
 } * BoosterHandle;
 
-typedef struct _ThreadStateBoostingHandle {
+typedef struct _InteractionHandle {
    // this struct exists to enforce that our caller doesn't mix handle types.
    // In C/C++ languages the caller will get an error if they try to mix these pointer types.
    char unused;
-} *ThreadStateBoostingHandle;
-
-typedef struct _InteractionDetectorHandle {
-   // this struct exists to enforce that our caller doesn't mix handle types.
-   // In C/C++ languages the caller will get an error if they try to mix these pointer types.
-   char unused;
-} * InteractionDetectorHandle;
+} * InteractionHandle;
 
 #ifndef PRId32
 // this should really be defined, but some compilers aren't compliant
@@ -375,7 +369,7 @@ EBM_NATIVE_IMPORT_EXPORT_INCLUDE SeedEbmType EBM_NATIVE_CALLING_CONVENTION Gener
    SeedEbmType stageRandomizationMix
 );
 
-EBM_NATIVE_IMPORT_EXPORT_INCLUDE IntEbmType EBM_NATIVE_CALLING_CONVENTION CutQuantile(
+EBM_NATIVE_IMPORT_EXPORT_INCLUDE ErrorEbmType EBM_NATIVE_CALLING_CONVENTION CutQuantile(
    IntEbmType countSamples,
    const FloatEbmType * featureValues,
    IntEbmType countSamplesPerBinMin,
@@ -399,7 +393,7 @@ EBM_NATIVE_IMPORT_EXPORT_INCLUDE void EBM_NATIVE_CALLING_CONVENTION CutUniform(
    FloatEbmType * maxNonInfinityValueOut,
    IntEbmType * countPositiveInfinityOut
 );
-EBM_NATIVE_IMPORT_EXPORT_INCLUDE IntEbmType EBM_NATIVE_CALLING_CONVENTION CutWinsorized(
+EBM_NATIVE_IMPORT_EXPORT_INCLUDE ErrorEbmType EBM_NATIVE_CALLING_CONVENTION CutWinsorized(
    IntEbmType countSamples,
    const FloatEbmType * featureValues,
    IntEbmType * countCutsInOut,
@@ -421,7 +415,7 @@ EBM_NATIVE_IMPORT_EXPORT_INCLUDE ErrorEbmType EBM_NATIVE_CALLING_CONVENTION Sugg
    FloatEbmType * highGraphBoundOut
 );
 
-EBM_NATIVE_IMPORT_EXPORT_INCLUDE IntEbmType EBM_NATIVE_CALLING_CONVENTION Discretize(
+EBM_NATIVE_IMPORT_EXPORT_INCLUDE ErrorEbmType EBM_NATIVE_CALLING_CONVENTION Discretize(
    IntEbmType countSamples,
    const FloatEbmType * featureValues,
    IntEbmType countCuts,
@@ -429,7 +423,7 @@ EBM_NATIVE_IMPORT_EXPORT_INCLUDE IntEbmType EBM_NATIVE_CALLING_CONVENTION Discre
    IntEbmType * discretizedOut
 );
 
-EBM_NATIVE_IMPORT_EXPORT_INCLUDE IntEbmType EBM_NATIVE_CALLING_CONVENTION Softmax(
+EBM_NATIVE_IMPORT_EXPORT_INCLUDE ErrorEbmType EBM_NATIVE_CALLING_CONVENTION Softmax(
    IntEbmType countTargetClasses,
    IntEbmType countSamples,
    const FloatEbmType * logits,
@@ -452,7 +446,7 @@ EBM_NATIVE_IMPORT_EXPORT_INCLUDE ErrorEbmType EBM_NATIVE_CALLING_CONVENTION Stra
    IntEbmType* sampleCountsOut
 );
 
-EBM_NATIVE_IMPORT_EXPORT_INCLUDE BoosterHandle EBM_NATIVE_CALLING_CONVENTION CreateClassificationBooster(
+EBM_NATIVE_IMPORT_EXPORT_INCLUDE ErrorEbmType EBM_NATIVE_CALLING_CONVENTION CreateClassificationBooster(
    SeedEbmType randomSeed,
    IntEbmType countTargetClasses,
    IntEbmType countFeatures,
@@ -472,9 +466,10 @@ EBM_NATIVE_IMPORT_EXPORT_INCLUDE BoosterHandle EBM_NATIVE_CALLING_CONVENTION Cre
    const FloatEbmType * validationWeights,
    const FloatEbmType * validationPredictorScores,
    IntEbmType countInnerBags,
-   const FloatEbmType * optionalTempParams
+   const FloatEbmType * optionalTempParams,
+   BoosterHandle * boosterHandleOut
 );
-EBM_NATIVE_IMPORT_EXPORT_INCLUDE BoosterHandle EBM_NATIVE_CALLING_CONVENTION CreateRegressionBooster(
+EBM_NATIVE_IMPORT_EXPORT_INCLUDE ErrorEbmType EBM_NATIVE_CALLING_CONVENTION CreateRegressionBooster(
    SeedEbmType randomSeed,
    IntEbmType countFeatures,
    const BoolEbmType * featuresCategorical,
@@ -493,10 +488,15 @@ EBM_NATIVE_IMPORT_EXPORT_INCLUDE BoosterHandle EBM_NATIVE_CALLING_CONVENTION Cre
    const FloatEbmType * validationWeights,
    const FloatEbmType * validationPredictorScores,
    IntEbmType countInnerBags,
-   const FloatEbmType * optionalTempParams
+   const FloatEbmType * optionalTempParams,
+   BoosterHandle * boosterHandleOut
 );
-EBM_NATIVE_IMPORT_EXPORT_INCLUDE IntEbmType EBM_NATIVE_CALLING_CONVENTION GenerateModelUpdate(
-   ThreadStateBoostingHandle threadStateBoostingHandle,
+EBM_NATIVE_IMPORT_EXPORT_INCLUDE ErrorEbmType EBM_NATIVE_CALLING_CONVENTION CreateBoosterView(
+   BoosterHandle boosterHandle,
+   BoosterHandle * boosterHandleViewOut
+);
+EBM_NATIVE_IMPORT_EXPORT_INCLUDE ErrorEbmType EBM_NATIVE_CALLING_CONVENTION GenerateModelUpdate(
+   BoosterHandle boosterHandle,
    IntEbmType indexFeatureGroup,
    GenerateUpdateOptionsType options, 
    FloatEbmType learningRate, 
@@ -504,31 +504,31 @@ EBM_NATIVE_IMPORT_EXPORT_INCLUDE IntEbmType EBM_NATIVE_CALLING_CONVENTION Genera
    const IntEbmType * leavesMax, 
    FloatEbmType * gainOut
 );
-EBM_NATIVE_IMPORT_EXPORT_INCLUDE IntEbmType EBM_NATIVE_CALLING_CONVENTION GetModelUpdateCuts(
-   ThreadStateBoostingHandle threadStateBoostingHandle,
+EBM_NATIVE_IMPORT_EXPORT_INCLUDE ErrorEbmType EBM_NATIVE_CALLING_CONVENTION GetModelUpdateCuts(
+   BoosterHandle boosterHandle,
    IntEbmType indexDimension,
    IntEbmType * countCutsInOut,
    IntEbmType * cutIndexesOut
 );
-EBM_NATIVE_IMPORT_EXPORT_INCLUDE IntEbmType EBM_NATIVE_CALLING_CONVENTION GetModelUpdateExpanded(
-   ThreadStateBoostingHandle threadStateBoostingHandle,
+EBM_NATIVE_IMPORT_EXPORT_INCLUDE ErrorEbmType EBM_NATIVE_CALLING_CONVENTION GetModelUpdateExpanded(
+   BoosterHandle boosterHandle,
    FloatEbmType * modelFeatureGroupUpdateTensorOut
 );
-EBM_NATIVE_IMPORT_EXPORT_INCLUDE IntEbmType EBM_NATIVE_CALLING_CONVENTION SetModelUpdateExpanded(
-   ThreadStateBoostingHandle threadStateBoostingHandle,
+EBM_NATIVE_IMPORT_EXPORT_INCLUDE ErrorEbmType EBM_NATIVE_CALLING_CONVENTION SetModelUpdateExpanded(
+   BoosterHandle boosterHandle,
    IntEbmType indexFeatureGroup,
    FloatEbmType * modelFeatureGroupUpdateTensor
 );
-EBM_NATIVE_IMPORT_EXPORT_INCLUDE IntEbmType EBM_NATIVE_CALLING_CONVENTION ApplyModelUpdate(
-   ThreadStateBoostingHandle threadStateBoostingHandle,
+EBM_NATIVE_IMPORT_EXPORT_INCLUDE ErrorEbmType EBM_NATIVE_CALLING_CONVENTION ApplyModelUpdate(
+   BoosterHandle boosterHandle,
    FloatEbmType * validationMetricOut
 );
-EBM_NATIVE_IMPORT_EXPORT_INCLUDE IntEbmType EBM_NATIVE_CALLING_CONVENTION GetBestModelFeatureGroup(
+EBM_NATIVE_IMPORT_EXPORT_INCLUDE ErrorEbmType EBM_NATIVE_CALLING_CONVENTION GetBestModelFeatureGroup(
    BoosterHandle boosterHandle, 
    IntEbmType indexFeatureGroup,
    FloatEbmType * modelFeatureGroupTensorOut
 );
-EBM_NATIVE_IMPORT_EXPORT_INCLUDE IntEbmType EBM_NATIVE_CALLING_CONVENTION GetCurrentModelFeatureGroup(
+EBM_NATIVE_IMPORT_EXPORT_INCLUDE ErrorEbmType EBM_NATIVE_CALLING_CONVENTION GetCurrentModelFeatureGroup(
    BoosterHandle boosterHandle,
    IntEbmType indexFeatureGroup,
    FloatEbmType * modelFeatureGroupTensorOut
@@ -537,17 +537,8 @@ EBM_NATIVE_IMPORT_EXPORT_INCLUDE void EBM_NATIVE_CALLING_CONVENTION FreeBooster(
    BoosterHandle boosterHandle
 );
 
-// TODO : elimiante this as a public object and just expose a BoosterHandle which will be for the shell object
-//        and also expose a CreateBoosterView which will copy the shell boster and refer to the same core booster
-EBM_NATIVE_IMPORT_EXPORT_INCLUDE ThreadStateBoostingHandle EBM_NATIVE_CALLING_CONVENTION CreateThreadStateBoosting(
-   BoosterHandle boosterHandle
-);
-EBM_NATIVE_IMPORT_EXPORT_INCLUDE void EBM_NATIVE_CALLING_CONVENTION FreeThreadStateBoosting(
-   ThreadStateBoostingHandle threadStateBoostingHandle
-);
 
-
-EBM_NATIVE_IMPORT_EXPORT_INCLUDE InteractionDetectorHandle EBM_NATIVE_CALLING_CONVENTION CreateClassificationInteractionDetector(
+EBM_NATIVE_IMPORT_EXPORT_INCLUDE ErrorEbmType EBM_NATIVE_CALLING_CONVENTION CreateClassificationInteractionDetector(
    IntEbmType countTargetClasses,
    IntEbmType countFeatures,
    const BoolEbmType * featuresCategorical,
@@ -557,9 +548,10 @@ EBM_NATIVE_IMPORT_EXPORT_INCLUDE InteractionDetectorHandle EBM_NATIVE_CALLING_CO
    const IntEbmType * targets,
    const FloatEbmType * weights,
    const FloatEbmType * predictorScores,
-   const FloatEbmType * optionalTempParams
+   const FloatEbmType * optionalTempParams,
+   InteractionHandle * interactionHandleOut
 );
-EBM_NATIVE_IMPORT_EXPORT_INCLUDE InteractionDetectorHandle EBM_NATIVE_CALLING_CONVENTION CreateRegressionInteractionDetector(
+EBM_NATIVE_IMPORT_EXPORT_INCLUDE ErrorEbmType EBM_NATIVE_CALLING_CONVENTION CreateRegressionInteractionDetector(
    IntEbmType countFeatures, 
    const BoolEbmType * featuresCategorical,
    const IntEbmType * featuresBinCount,
@@ -568,17 +560,18 @@ EBM_NATIVE_IMPORT_EXPORT_INCLUDE InteractionDetectorHandle EBM_NATIVE_CALLING_CO
    const FloatEbmType * targets,
    const FloatEbmType * weights,
    const FloatEbmType * predictorScores,
-   const FloatEbmType * optionalTempParams
+   const FloatEbmType * optionalTempParams,
+   InteractionHandle * interactionHandleOut
 );
-EBM_NATIVE_IMPORT_EXPORT_INCLUDE IntEbmType EBM_NATIVE_CALLING_CONVENTION CalculateInteractionScore(
-   InteractionDetectorHandle interactionDetectorHandle, 
+EBM_NATIVE_IMPORT_EXPORT_INCLUDE ErrorEbmType EBM_NATIVE_CALLING_CONVENTION CalculateInteractionScore(
+   InteractionHandle interactionHandle, 
    IntEbmType countDimensions,
    const IntEbmType * featureIndexes,
    IntEbmType countSamplesRequiredForChildSplitMin,
    FloatEbmType * interactionScoreOut
 );
 EBM_NATIVE_IMPORT_EXPORT_INCLUDE void EBM_NATIVE_CALLING_CONVENTION FreeInteractionDetector(
-   InteractionDetectorHandle interactionDetectorHandle
+   InteractionHandle interactionHandle
 );
 
 // TODO PK Implement the following for memory efficiency and speed of initialization :

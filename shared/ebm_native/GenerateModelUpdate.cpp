@@ -52,7 +52,7 @@ extern void SumHistogramBuckets(
 #endif // NDEBUG
 );
 
-extern bool PartitionOneDimensionalBoosting(
+extern ErrorEbmType PartitionOneDimensionalBoosting(
    BoosterShell * const pBoosterShell,
    const size_t cHistogramBuckets,
    const size_t cSamplesTotal,
@@ -62,7 +62,7 @@ extern bool PartitionOneDimensionalBoosting(
    FloatEbmType * const pTotalGain
 );
 
-extern bool PartitionTwoDimensionalBoosting(
+extern ErrorEbmType PartitionTwoDimensionalBoosting(
    BoosterShell * const pBoosterShell,
    const FeatureGroup * const pFeatureGroup,
    const size_t cSamplesRequiredForChildSplitMin,
@@ -74,7 +74,7 @@ extern bool PartitionTwoDimensionalBoosting(
 #endif // NDEBUG
 );
 
-extern bool PartitionRandomBoosting(
+extern ErrorEbmType PartitionRandomBoosting(
    BoosterShell * const pBoosterShell,
    const FeatureGroup * const pFeatureGroup,
    const GenerateUpdateOptionsType options,
@@ -82,7 +82,7 @@ extern bool PartitionRandomBoosting(
    FloatEbmType * const pTotalGain
 );
 
-static bool BoostZeroDimensional(
+static ErrorEbmType BoostZeroDimensional(
    BoosterShell * const pBoosterShell, 
    const SamplingSet * const pTrainingSet,
    const GenerateUpdateOptionsType options
@@ -97,7 +97,7 @@ static bool BoostZeroDimensional(
    if(GetHistogramBucketSizeOverflow(bClassification, cVectorLength)) {
       // TODO : move this to initialization where we execute it only once
       LOG_0(TraceLevelWarning, "GetHistogramBucketSizeOverflow<bClassification>(cVectorLength)");
-      return true;
+      return Error_OutOfMemory;
    }
    const size_t cBytesPerHistogramBucket = GetHistogramBucketSize(bClassification, cVectorLength);
 
@@ -106,7 +106,7 @@ static bool BoostZeroDimensional(
 
    if(UNLIKELY(nullptr == pHistogramBucket)) {
       LOG_0(TraceLevelWarning, "WARNING nullptr == pHistogramBucket");
-      return true;
+      return Error_OutOfMemory;
    }
 
    if(bClassification) {
@@ -185,10 +185,10 @@ static bool BoostZeroDimensional(
    }
 
    LOG_0(TraceLevelVerbose, "Exited BoostZeroDimensional");
-   return false;
+   return Error_None;
 }
 
-static bool BoostSingleDimensional(
+static ErrorEbmType BoostSingleDimensional(
    BoosterShell * const pBoosterShell,
    const FeatureGroup * const pFeatureGroup,
    const size_t cHistogramBuckets,
@@ -216,20 +216,20 @@ static bool BoostSingleDimensional(
    if(GetHistogramBucketSizeOverflow(bClassification, cVectorLength)) {
       // TODO : move this to initialization where we execute it only once
       LOG_0(TraceLevelWarning, "WARNING GetHistogramBucketSizeOverflow<bClassification>(cVectorLength)");
-      return true;
+      return Error_OutOfMemory;
    }
    const size_t cBytesPerHistogramBucket = GetHistogramBucketSize(bClassification, cVectorLength);
    if(IsMultiplyError(cHistogramBuckets, cBytesPerHistogramBucket)) {
       // TODO : move this to initialization where we execute it only once
       LOG_0(TraceLevelWarning, "WARNING IsMultiplyError(cHistogramBuckets, cBytesPerHistogramBucket)");
-      return true;
+      return Error_OutOfMemory;
    }
    const size_t cBytesBuffer = cHistogramBuckets * cBytesPerHistogramBucket;
 
    HistogramBucketBase * const aHistogramBuckets = pBoosterShell->GetHistogramBucketBase(cBytesBuffer);
    if(UNLIKELY(nullptr == aHistogramBuckets)) {
       LOG_0(TraceLevelWarning, "WARNING BoostSingleDimensional nullptr == aHistogramBuckets");
-      return true;
+      return Error_OutOfMemory;
    }
 
    HistogramTargetEntryBase * const aSumHistogramTargetEntry =
@@ -284,7 +284,7 @@ static bool BoostSingleDimensional(
    EBM_ASSERT(1 <= cSamplesTotal);
    const FloatEbmType weightTotal = pTrainingSet->GetWeightTotal();
 
-   bool bRet = PartitionOneDimensionalBoosting(
+   const ErrorEbmType bRet = PartitionOneDimensionalBoosting(
       pBoosterShell,
       cHistogramBuckets,
       cSamplesTotal,
@@ -301,7 +301,7 @@ static bool BoostSingleDimensional(
 // TODO: for higher dimensional spaces, we need to add/subtract individual cells alot and the hessian isn't required (yet) in order to make decisions about
 //   where to cut.  For dimensions higher than 2, we might want to copy the tensor to a new tensor AFTER binning that keeps only the gradients and then 
 //    go back to our original tensor after splits to determine the hessian
-static bool BoostMultiDimensional(
+static ErrorEbmType BoostMultiDimensional(
    BoosterShell * const pBoosterShell,
    const FeatureGroup * const pFeatureGroup,
    const SamplingSet * const pTrainingSet,
@@ -342,7 +342,7 @@ static bool BoostMultiDimensional(
       cAuxillaryBucketsForBuildFastTotals < cAuxillaryBucketsForSplitting ? cAuxillaryBucketsForSplitting : cAuxillaryBucketsForBuildFastTotals;
    if(IsAddError(cTotalBucketsMainSpace, cAuxillaryBuckets)) {
       LOG_0(TraceLevelWarning, "WARNING BoostMultiDimensional IsAddError(cTotalBucketsMainSpace, cAuxillaryBuckets)");
-      return true;
+      return Error_OutOfMemory;
    }
    const size_t cTotalBuckets = cTotalBucketsMainSpace + cAuxillaryBuckets;
 
@@ -355,12 +355,12 @@ static bool BoostMultiDimensional(
          TraceLevelWarning,
          "WARNING BoostMultiDimensional GetHistogramBucketSizeOverflow<bClassification>(cVectorLength)"
       );
-      return true;
+      return Error_OutOfMemory;
    }
    const size_t cBytesPerHistogramBucket = GetHistogramBucketSize(bClassification, cVectorLength);
    if(IsMultiplyError(cTotalBuckets, cBytesPerHistogramBucket)) {
       LOG_0(TraceLevelWarning, "WARNING BoostMultiDimensional IsMultiplyError(cTotalBuckets, cBytesPerHistogramBucket)");
-      return true;
+      return Error_OutOfMemory;
    }
    const size_t cBytesBuffer = cTotalBuckets * cBytesPerHistogramBucket;
 
@@ -368,7 +368,7 @@ static bool BoostMultiDimensional(
    HistogramBucketBase * const aHistogramBuckets = pBoosterShell->GetHistogramBucketBase(cBytesBuffer);
    if(UNLIKELY(nullptr == aHistogramBuckets)) {
       LOG_0(TraceLevelWarning, "WARNING BoostMultiDimensional nullptr == aHistogramBuckets");
-      return true;
+      return Error_OutOfMemory;
    }
 
    if(bClassification) {
@@ -530,7 +530,7 @@ static bool BoostMultiDimensional(
          cTotalBucketsMainSpace - 1
       );
 
-      bool bError = PartitionTwoDimensionalBoosting(
+      const ErrorEbmType error = PartitionTwoDimensionalBoosting(
          pBoosterShell,
          pFeatureGroup,
          cSamplesRequiredForChildSplitMin,
@@ -541,14 +541,14 @@ static bool BoostMultiDimensional(
          , aHistogramBucketsDebugCopy
 #endif // NDEBUG
       );
-      if(bError) {
+      if(Error_None != error) {
 #ifndef NDEBUG
          free(aHistogramBucketsDebugCopy);
 #endif // NDEBUG
 
          LOG_0(TraceLevelVerbose, "Exited BoostMultiDimensional with Error code");
 
-         return true;
+         return error;
       }
 
       // gain can be -infinity for regression in a super-super-super-rare condition.  
@@ -560,12 +560,13 @@ static bool BoostMultiDimensional(
    } else {
       LOG_0(TraceLevelWarning, "WARNING BoostMultiDimensional 2 != pFeatureGroup->GetCountSignificantFeatures()");
 
-      // TODO: handle this better
+      // TODO: eventually handle this in our caller and this function can specialize in handling just 2 dimensional
+      //       then we can replace this branch with an assert
 #ifndef NDEBUG
       EBM_ASSERT(false);
       free(aHistogramBucketsDebugCopy);
 #endif // NDEBUG
-      return true;
+      return Error_UnexpectedInternal;
    }
 
 #ifndef NDEBUG
@@ -573,10 +574,10 @@ static bool BoostMultiDimensional(
 #endif // NDEBUG
 
    LOG_0(TraceLevelVerbose, "Exited BoostMultiDimensional");
-   return false;
+   return Error_None;
 }
 
-static bool BoostRandom(
+static ErrorEbmType BoostRandom(
    BoosterShell * const pBoosterShell,
    const FeatureGroup * const pFeatureGroup,
    const SamplingSet * const pTrainingSet,
@@ -609,12 +610,12 @@ static bool BoostRandom(
          TraceLevelWarning,
          "WARNING BoostRandom GetHistogramBucketSizeOverflow<bClassification>(cVectorLength)"
       );
-      return true;
+      return Error_OutOfMemory;
    }
    const size_t cBytesPerHistogramBucket = GetHistogramBucketSize(bClassification, cVectorLength);
    if(IsMultiplyError(cTotalBuckets, cBytesPerHistogramBucket)) {
       LOG_0(TraceLevelWarning, "WARNING BoostRandom IsMultiplyError(cTotalBuckets, cBytesPerHistogramBucket)");
-      return true;
+      return Error_OutOfMemory;
    }
    const size_t cBytesBuffer = cTotalBuckets * cBytesPerHistogramBucket;
 
@@ -622,7 +623,7 @@ static bool BoostRandom(
    HistogramBucketBase * const aHistogramBuckets = pBoosterShell->GetHistogramBucketBase(cBytesBuffer);
    if(UNLIKELY(nullptr == aHistogramBuckets)) {
       LOG_0(TraceLevelWarning, "WARNING BoostRandom nullptr == aHistogramBuckets");
-      return true;
+      return Error_OutOfMemory;
    }
 
    if(bClassification) {
@@ -651,16 +652,16 @@ static bool BoostRandom(
       pTrainingSet
    );
 
-   bool bError = PartitionRandomBoosting(
+   const ErrorEbmType error = PartitionRandomBoosting(
       pBoosterShell,
       pFeatureGroup,
       options,
       aLeavesMax,
       pTotalGain
    );
-   if(bError) {
+   if(Error_None != error) {
       LOG_0(TraceLevelVerbose, "Exited BoostRandom with Error code");
-      return true;
+      return error;
    }
 
    // gain can be -infinity for regression in a super-super-super-rare condition.  
@@ -671,13 +672,13 @@ static bool BoostRandom(
       k_epsilonNegativeGainAllowed <= *pTotalGain);
 
    LOG_0(TraceLevelVerbose, "Exited BoostRandom");
-   return false;
+   return Error_None;
 }
 
 // a*PredictorScores = logOdds for binary classification
 // a*PredictorScores = logWeights for multiclass classification
 // a*PredictorScores = predictedValue for regression
-static IntEbmType GenerateModelUpdateInternal(
+static ErrorEbmType GenerateModelUpdateInternal(
    BoosterShell * const pBoosterShell,
    const size_t iFeatureGroup,
    const GenerateUpdateOptionsType options,
@@ -746,11 +747,13 @@ static IntEbmType GenerateModelUpdateInternal(
          FloatEbmType gain;
          if(UNLIKELY(IntEbmType { 0 } == lastDimensionLeavesMax)) {
             LOG_0(TraceLevelWarning, "WARNING GenerateModelUpdateInternal boosting zero dimensional");
-            if(BoostZeroDimensional(pBoosterShell, pBoosterCore->GetSamplingSets()[iSamplingSet], options)) {
+            const ErrorEbmType error =
+               BoostZeroDimensional(pBoosterShell, pBoosterCore->GetSamplingSets()[iSamplingSet], options);
+            if(Error_None != error) {
                if(LIKELY(nullptr != pGainReturn)) {
                   *pGainReturn = FloatEbmType { 0 };
                }
-               return IntEbmType { 1 };
+               return error;
             }
             gain = FloatEbmType { 0 };
          } else if(0 != (GenerateUpdateOptions_RandomSplits & options)) {
@@ -760,24 +763,27 @@ static IntEbmType GenerateModelUpdateInternal(
                );
             }
             // THIS RANDOM CUT OPTION IS PRIMARILY USED FOR DIFFERENTIAL PRIVACY EBMs
-            if(BoostRandom(
+
+            const ErrorEbmType error = BoostRandom(
                pBoosterShell,
                pFeatureGroup,
                pBoosterCore->GetSamplingSets()[iSamplingSet],
                options,
-               aLeavesMax, 
+               aLeavesMax,
                &gain
-            )) {
+            );
+            if(Error_None != error) {
                if(LIKELY(nullptr != pGainReturn)) {
                   *pGainReturn = FloatEbmType { 0 };
                }
-               return IntEbmType { 1 };
+               return error;
             }
          } else if(1 == cSignificantDimensions) {
             EBM_ASSERT(nullptr != aLeavesMax); // otherwise we'd use BoostZeroDimensional above
             EBM_ASSERT(IntEbmType { 2 } <= lastDimensionLeavesMax); // otherwise we'd use BoostZeroDimensional above
             EBM_ASSERT(size_t { 2 } <= cSignificantBinCount); // otherwise we'd use BoostZeroDimensional above
-            if(BoostSingleDimensional(
+
+            const ErrorEbmType error = BoostSingleDimensional(
                pBoosterShell,
                pFeatureGroup,
                cSignificantBinCount,
@@ -785,24 +791,26 @@ static IntEbmType GenerateModelUpdateInternal(
                cSamplesRequiredForChildSplitMin,
                lastDimensionLeavesMax,
                &gain
-            )) {
+            );
+            if(Error_None != error) {
                if(LIKELY(nullptr != pGainReturn)) {
                   *pGainReturn = FloatEbmType { 0 };
                }
-               return IntEbmType { 1 };
+               return error;
             }
          } else {
-            if(BoostMultiDimensional(
+            const ErrorEbmType error = BoostMultiDimensional(
                pBoosterShell,
                pFeatureGroup,
                pBoosterCore->GetSamplingSets()[iSamplingSet],
                cSamplesRequiredForChildSplitMin,
                &gain
-            )) {
+            );
+            if(Error_None != error) {
                if(LIKELY(nullptr != pGainReturn)) {
                   *pGainReturn = FloatEbmType { 0 };
                }
-               return IntEbmType { 1 };
+               return error;
             }
          }
          // regression can be -infinity or slightly negative in extremely rare circumstances.  
@@ -811,11 +819,12 @@ static IntEbmType GenerateModelUpdateInternal(
          totalGain += gain;
          // TODO : when we thread this code, let's have each thread take a lock and update the combined line segment.  They'll each do it while the 
          // others are working, so there should be no blocking and our final result won't require adding by the main thread
-         if(pBoosterShell->GetAccumulatedModelUpdate()->Add(*pBoosterShell->GetOverwritableModelUpdate())) {
+         const ErrorEbmType error = pBoosterShell->GetAccumulatedModelUpdate()->Add(*pBoosterShell->GetOverwritableModelUpdate());
+         if(Error_None != error) {
             if(LIKELY(nullptr != pGainReturn)) {
                *pGainReturn = FloatEbmType { 0 };
             }
-            return IntEbmType { 1 };
+            return error;
          }
       }
       totalGain /= static_cast<FloatEbmType>(cSamplingSetsAfterZero);
@@ -891,7 +900,7 @@ static IntEbmType GenerateModelUpdateInternal(
    }
 
    LOG_0(TraceLevelVerbose, "Exited GenerateModelUpdatePerTargetClasses");
-   return IntEbmType { 0 };
+   return Error_None;
 }
 
 // we made this a global because if we had put this variable inside the BoosterCore object, then we would need to dereference that before getting 
@@ -919,8 +928,8 @@ static int g_cLogGenerateModelUpdateParametersMessages = 10;
 //        Lastly, with the memory allocated by our caller, we can call GenerateModelUpdate in parallel on multiple feature_groups.  
 //        Right now you can't call it in parallel since we're updating our internal single tensor
 
-EBM_NATIVE_IMPORT_EXPORT_BODY IntEbmType EBM_NATIVE_CALLING_CONVENTION GenerateModelUpdate(
-   ThreadStateBoostingHandle threadStateBoostingHandle,
+EBM_NATIVE_IMPORT_EXPORT_BODY ErrorEbmType EBM_NATIVE_CALLING_CONVENTION GenerateModelUpdate(
+   BoosterHandle boosterHandle,
    IntEbmType indexFeatureGroup,
    GenerateUpdateOptionsType options,
    FloatEbmType learningRate,
@@ -933,7 +942,7 @@ EBM_NATIVE_IMPORT_EXPORT_BODY IntEbmType EBM_NATIVE_CALLING_CONVENTION GenerateM
       TraceLevelInfo,
       TraceLevelVerbose,
       "GenerateModelUpdate: "
-      "threadStateBoostingHandle=%p, "
+      "boosterHandle=%p, "
       "indexFeatureGroup=%" IntEbmTypePrintf ", "
       "options=0x%" UGenerateUpdateOptionsTypePrintf ", "
       "learningRate=%" FloatEbmTypePrintf ", "
@@ -941,7 +950,7 @@ EBM_NATIVE_IMPORT_EXPORT_BODY IntEbmType EBM_NATIVE_CALLING_CONVENTION GenerateM
       "leavesMax=%p, "
       "gainOut=%p"
       ,
-      static_cast<void *>(threadStateBoostingHandle),
+      static_cast<void *>(boosterHandle),
       indexFeatureGroup,
       static_cast<UGenerateUpdateOptionsType>(options), // signed to unsigned conversion is defined behavior in C++
       learningRate,
@@ -950,13 +959,13 @@ EBM_NATIVE_IMPORT_EXPORT_BODY IntEbmType EBM_NATIVE_CALLING_CONVENTION GenerateM
       static_cast<void *>(gainOut)
    );
 
-   BoosterShell * const pBoosterShell = reinterpret_cast<BoosterShell *>(threadStateBoostingHandle);
+   BoosterShell * const pBoosterShell = BoosterShell::GetBoosterShellFromBoosterHandle(boosterHandle);
    if(nullptr == pBoosterShell) {
       if(LIKELY(nullptr != gainOut)) {
          *gainOut = FloatEbmType { 0 };
       }
-      LOG_0(TraceLevelError, "ERROR GenerateModelUpdate threadStateBoosting cannot be nullptr");
-      return IntEbmType { 1 };
+      // already logged
+      return Error_IllegalParamValue;
    }
 
    // set this to illegal so if we exit with an error we have an invalid index
@@ -970,7 +979,7 @@ EBM_NATIVE_IMPORT_EXPORT_BODY IntEbmType EBM_NATIVE_CALLING_CONVENTION GenerateM
          *gainOut = FloatEbmType { 0 };
       }
       LOG_0(TraceLevelError, "ERROR GenerateModelUpdate indexFeatureGroup must be positive");
-      return IntEbmType { 1 };
+      return Error_IllegalParamValue;
    }
    if(!IsNumberConvertable<size_t>(indexFeatureGroup)) {
       // we wouldn't have allowed the creation of an feature set larger than size_t
@@ -978,7 +987,7 @@ EBM_NATIVE_IMPORT_EXPORT_BODY IntEbmType EBM_NATIVE_CALLING_CONVENTION GenerateM
          *gainOut = FloatEbmType { 0 };
       }
       LOG_0(TraceLevelError, "ERROR GenerateModelUpdate indexFeatureGroup is too high to index");
-      return IntEbmType { 1 };
+      return Error_IllegalParamValue;
    }
    size_t iFeatureGroup = static_cast<size_t>(indexFeatureGroup);
    if(pBoosterCore->GetCountFeatureGroups() <= iFeatureGroup) {
@@ -986,7 +995,7 @@ EBM_NATIVE_IMPORT_EXPORT_BODY IntEbmType EBM_NATIVE_CALLING_CONVENTION GenerateM
          *gainOut = FloatEbmType { 0 };
       }
       LOG_0(TraceLevelError, "ERROR GenerateModelUpdate indexFeatureGroup above the number of feature groups that we have");
-      return IntEbmType { 1 };
+      return Error_IllegalParamValue;
    }
    // this is true because 0 < pBoosterCore->m_cFeatureGroups since our caller needs to pass in a valid indexFeatureGroup to this function
    EBM_ASSERT(nullptr != pBoosterCore->GetFeatureGroups());
@@ -1039,10 +1048,10 @@ EBM_NATIVE_IMPORT_EXPORT_BODY IntEbmType EBM_NATIVE_CALLING_CONVENTION GenerateM
          TraceLevelWarning,
          "WARNING GenerateModelUpdate pBoosterCore->m_runtimeLearningTypeOrCountTargetClasses <= ptrdiff_t { 1 }"
       );
-      return IntEbmType { 0 };
+      return Error_None;
    }
 
-   const IntEbmType ret = GenerateModelUpdateInternal(
+   const ErrorEbmType ret = GenerateModelUpdateInternal(
       pBoosterShell,
       iFeatureGroup,
       options,

@@ -247,7 +247,7 @@ TestApi::TestApi(const ptrdiff_t learningTypeOrCountTargetClasses, const ptrdiff
    m_boosterHandle(nullptr),
    m_bNullInteractionWeights(true),
    m_bNullInteractionPredictionScores(true),
-   m_interactionDetectorHandle(nullptr) 
+   m_interactionHandle(nullptr) 
 {
    if(IsClassification(learningTypeOrCountTargetClasses)) {
       if(learningTypeOrCountTargetClasses <= iZeroClassificationLogit) {
@@ -264,8 +264,8 @@ TestApi::~TestApi() {
    if(nullptr != m_boosterHandle) {
       FreeBooster(m_boosterHandle);
    }
-   if(nullptr != m_interactionDetectorHandle) {
-      FreeInteractionDetector(m_interactionDetectorHandle);
+   if(nullptr != m_interactionHandle) {
+      FreeInteractionDetector(m_interactionHandle);
    }
 }
 
@@ -589,6 +589,7 @@ void TestApi::InitializeBoosting(const IntEbmType countInnerBags) {
    }
 
    const size_t cVectorLength = GetVectorLength(m_learningTypeOrCountTargetClasses);
+   ErrorEbmType error;
    if(IsClassification(m_learningTypeOrCountTargetClasses)) {
       if(m_bNullTrainingPredictionScores) {
          m_trainingPredictionScores.resize(cVectorLength * m_trainingClassificationTargets.size());
@@ -602,7 +603,7 @@ void TestApi::InitializeBoosting(const IntEbmType countInnerBags) {
       if(m_bNullValidationWeights) {
          m_validationWeights.resize(m_validationClassificationTargets.size());
       }
-      m_boosterHandle = CreateClassificationBooster(
+      error = CreateClassificationBooster(
          k_randomSeed,
          m_learningTypeOrCountTargetClasses,
          m_featuresBinCount.size(),
@@ -622,7 +623,8 @@ void TestApi::InitializeBoosting(const IntEbmType countInnerBags) {
          0 == m_validationWeights.size() ? nullptr : &m_validationWeights[0],
          0 == m_validationPredictionScores.size() ? nullptr : &m_validationPredictionScores[0],
          countInnerBags,
-         nullptr
+         nullptr,
+         &m_boosterHandle
       );
    } else if(k_learningTypeRegression == m_learningTypeOrCountTargetClasses) {
       if(m_bNullTrainingPredictionScores) {
@@ -637,7 +639,7 @@ void TestApi::InitializeBoosting(const IntEbmType countInnerBags) {
       if(m_bNullValidationWeights) {
          m_validationWeights.resize(m_validationRegressionTargets.size());
       }
-      m_boosterHandle = CreateRegressionBooster(
+      error = CreateRegressionBooster(
          k_randomSeed,
          m_featuresBinCount.size(),
          0 == m_featuresCategorical.size() ? nullptr : &m_featuresCategorical[0],
@@ -656,12 +658,17 @@ void TestApi::InitializeBoosting(const IntEbmType countInnerBags) {
          0 == m_validationWeights.size() ? nullptr : &m_validationWeights[0],
          0 == m_validationPredictionScores.size() ? nullptr : &m_validationPredictionScores[0],
          countInnerBags,
-         nullptr
+         nullptr,
+         &m_boosterHandle
       );
    } else {
       exit(1);
    }
 
+   if(Error_None != error) {
+      printf("\nClean exit with nullptr from InitializeBoosting*.\n");
+      exit(1);
+   }
    if(nullptr == m_boosterHandle) {
       printf("\nClean exit with nullptr from InitializeBoosting*.\n");
       exit(1);
@@ -697,9 +704,8 @@ FloatEbmType TestApi::Boost(
 
    FloatEbmType validationMetricOut = FloatEbmType { 0 };
 
-   const ThreadStateBoostingHandle threadStateBoostingHandle = CreateThreadStateBoosting(m_boosterHandle);
-   const IntEbmType retGenerate = GenerateModelUpdate(
-      threadStateBoostingHandle,
+   const ErrorEbmType retGenerate = GenerateModelUpdate(
+      m_boosterHandle,
       indexFeatureGroup,
       options,
       learningRate,
@@ -707,7 +713,7 @@ FloatEbmType TestApi::Boost(
       0 == leavesMax.size() ? nullptr : &leavesMax[0],
       nullptr
    );
-   if(0 != retGenerate) {
+   if(Error_None != retGenerate) {
       exit(1);
    }
    if(0 != (GenerateUpdateOptions_GradientSums & options)) {
@@ -724,25 +730,24 @@ FloatEbmType TestApi::Boost(
       FloatEbmType * aMem = new FloatEbmType[cValues];
       memset(aMem, 0, sizeof(*aMem) * cValues);
 
-      const IntEbmType retSet = SetModelUpdateExpanded(
-         threadStateBoostingHandle,
+      const ErrorEbmType retSet = SetModelUpdateExpanded(
+         m_boosterHandle,
          indexFeatureGroup,
          aMem
       );
 
       delete[] aMem;
 
-      if(0 != retSet) {
+      if(Error_None != retSet) {
          exit(1);
       }
    }
-   const IntEbmType ret = ApplyModelUpdate(
-      threadStateBoostingHandle,
+   const ErrorEbmType ret = ApplyModelUpdate(
+      m_boosterHandle,
       &validationMetricOut
    );
-   FreeThreadStateBoosting(threadStateBoostingHandle);
 
-   if(0 != ret) {
+   if(Error_None != ret) {
       exit(1);
    }
    return validationMetricOut;
@@ -771,8 +776,8 @@ FloatEbmType TestApi::GetBestModelPredictorScore(
    std::vector<FloatEbmType> model;
    model.resize(multiple);
 
-   const IntEbmType ret = GetBestModelFeatureGroup(m_boosterHandle, iFeatureGroup, &model[0]);
-   if(0 != ret) {
+   const ErrorEbmType ret = GetBestModelFeatureGroup(m_boosterHandle, iFeatureGroup, &model[0]);
+   if(Error_None != ret) {
       exit(1);
    }
 
@@ -787,8 +792,8 @@ const void TestApi::GetBestModelFeatureGroupRaw(const size_t iFeatureGroup, Floa
    if(m_featureGroupsDimensionCount.size() <= iFeatureGroup) {
       exit(1);
    }
-   const IntEbmType ret = GetBestModelFeatureGroup(m_boosterHandle, iFeatureGroup, aModelValues);
-   if(0 != ret) {
+   const ErrorEbmType ret = GetBestModelFeatureGroup(m_boosterHandle, iFeatureGroup, aModelValues);
+   if(Error_None != ret) {
       exit(1);
    }
 }
@@ -816,8 +821,8 @@ FloatEbmType TestApi::GetCurrentModelPredictorScore(
    std::vector<FloatEbmType> model;
    model.resize(multiple);
 
-   const IntEbmType ret = GetCurrentModelFeatureGroup(m_boosterHandle, iFeatureGroup, &model[0]);
-   if(0 != ret) {
+   const ErrorEbmType ret = GetCurrentModelFeatureGroup(m_boosterHandle, iFeatureGroup, &model[0]);
+   if(Error_None != ret) {
       exit(1);
    }
 
@@ -832,8 +837,8 @@ const void TestApi::GetCurrentModelFeatureGroupRaw(const size_t iFeatureGroup, F
    if(m_featureGroupsDimensionCount.size() <= iFeatureGroup) {
       exit(1);
    }
-   const IntEbmType ret = GetCurrentModelFeatureGroup(m_boosterHandle, iFeatureGroup, aModelValues);
-   if(0 != ret) {
+   const ErrorEbmType ret = GetCurrentModelFeatureGroup(m_boosterHandle, iFeatureGroup, aModelValues);
+   if(Error_None != ret) {
       exit(1);
    }
 }
@@ -984,6 +989,7 @@ void TestApi::InitializeInteraction() {
    }
 
    const size_t cVectorLength = GetVectorLength(m_learningTypeOrCountTargetClasses);
+   ErrorEbmType error;
    if(IsClassification(m_learningTypeOrCountTargetClasses)) {
       if(m_bNullInteractionPredictionScores) {
          m_interactionPredictionScores.resize(cVectorLength * m_interactionClassificationTargets.size());
@@ -991,7 +997,7 @@ void TestApi::InitializeInteraction() {
       if(m_bNullInteractionWeights) {
          m_interactionWeights.resize(m_interactionClassificationTargets.size());
       }
-      m_interactionDetectorHandle = CreateClassificationInteractionDetector(
+      error = CreateClassificationInteractionDetector(
          m_learningTypeOrCountTargetClasses,
          m_featuresBinCount.size(),
          0 == m_featuresCategorical.size() ? nullptr : &m_featuresCategorical[0],
@@ -1001,7 +1007,8 @@ void TestApi::InitializeInteraction() {
          0 == m_interactionClassificationTargets.size() ? nullptr : &m_interactionClassificationTargets[0],
          0 == m_interactionWeights.size() ? nullptr : &m_interactionWeights[0],
          0 == m_interactionPredictionScores.size() ? nullptr : &m_interactionPredictionScores[0],
-         nullptr
+         nullptr,
+         &m_interactionHandle
       );
    } else if(k_learningTypeRegression == m_learningTypeOrCountTargetClasses) {
       if(m_bNullInteractionPredictionScores) {
@@ -1010,7 +1017,7 @@ void TestApi::InitializeInteraction() {
       if(m_bNullInteractionWeights) {
          m_interactionWeights.resize(m_interactionRegressionTargets.size());
       }
-      m_interactionDetectorHandle = CreateRegressionInteractionDetector(
+      error = CreateRegressionInteractionDetector(
          m_featuresBinCount.size(),
          0 == m_featuresCategorical.size() ? nullptr : &m_featuresCategorical[0],
          0 == m_featuresBinCount.size() ? nullptr : &m_featuresBinCount[0],
@@ -1019,13 +1026,19 @@ void TestApi::InitializeInteraction() {
          0 == m_interactionRegressionTargets.size() ? nullptr : &m_interactionRegressionTargets[0],
          0 == m_interactionWeights.size() ? nullptr : &m_interactionWeights[0],
          0 == m_interactionPredictionScores.size() ? nullptr : &m_interactionPredictionScores[0],
-         nullptr
+         nullptr,
+         &m_interactionHandle
       );
    } else {
       exit(1);
    }
 
-   if(nullptr == m_interactionDetectorHandle) {
+   if(Error_None != error) {
+      printf("\nClean exit with nullptr from InitializeInteraction*.\n");
+      exit(1);
+   }
+   if(nullptr == m_interactionHandle) {
+      printf("\nClean exit with nullptr from InitializeInteraction*.\n");
       exit(1);
    }
    m_stage = Stage::InitializedInteraction;
@@ -1048,14 +1061,14 @@ FloatEbmType TestApi::InteractionScore(
    }
 
    FloatEbmType interactionScoreOut = FloatEbmType { 0 };
-   const IntEbmType ret = CalculateInteractionScore(
-      m_interactionDetectorHandle,
+   const ErrorEbmType ret = CalculateInteractionScore(
+      m_interactionHandle,
       featuresInGroup.size(),
       0 == featuresInGroup.size() ? nullptr : &featuresInGroup[0],
       countSamplesRequiredForChildSplitMin,
       &interactionScoreOut
    );
-   if(0 != ret) {
+   if(Error_None != ret) {
       exit(1);
    }
    return interactionScoreOut;

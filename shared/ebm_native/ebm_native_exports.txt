@@ -5,6 +5,7 @@
       GetTraceLevelString;
       CreateClassificationBooster;
       CreateRegressionBooster;
+      CreateBoosterView;
       GenerateModelUpdate;
       GetModelUpdateCuts;
       GetModelUpdateExpanded;
@@ -13,8 +14,6 @@
       GetBestModelFeatureGroup;
       GetCurrentModelFeatureGroup;
       FreeBooster;
-      CreateThreadStateBoosting;
-      FreeThreadStateBoosting;
       CreateClassificationInteractionDetector;
       CreateRegressionInteractionDetector;
       CalculateInteractionScore;

@@ -18,7 +18,6 @@
 #include "HistogramTargetEntry.hpp"
 
 #include "BoosterCore.hpp"
-
 #include "BoosterShell.hpp"
 
 namespace DEFINED_ZONE_NAME {
@@ -41,6 +40,9 @@ void BoosterShell::Free(BoosterShell * const pBoosterShell) {
       free(pBoosterShell->m_aEquivalentSplits);
       BoosterCore::Free(pBoosterShell->m_pBoosterCore);
 
+      // before we free our memory, indicate it was freed so if our higher level language attempts to use it we have
+      // a chance to detect the error
+      pBoosterShell->m_handleVerification = k_handleVerificationFreed;
       free(pBoosterShell);
    }
 
@@ -56,6 +58,7 @@ BoosterShell * BoosterShell::Create() {
    }
 
    LOG_0(TraceLevelInfo, "Exited BoosterShell::Create");
+
    return pNew;
 }
 
@@ -149,31 +152,11 @@ bool BoosterShell::GrowThreadByteBuffer2(const size_t cByteBoundaries) {
    return false;
 }
 
-EBM_NATIVE_IMPORT_EXPORT_BODY ThreadStateBoostingHandle EBM_NATIVE_CALLING_CONVENTION CreateThreadStateBoosting(
-   BoosterHandle boosterHandle
-) {
-   // TODO : eliminate this
-   return reinterpret_cast<ThreadStateBoostingHandle>(boosterHandle);
-}
-
-EBM_NATIVE_IMPORT_EXPORT_BODY void EBM_NATIVE_CALLING_CONVENTION FreeThreadStateBoosting(
-   ThreadStateBoostingHandle threadStateBoostingHandle
-) {
-   UNUSED(threadStateBoostingHandle);
-   // TODO : eliminate this
-   return;
-}
-
-
-
-
-
-
 
 // a*PredictorScores = logOdds for binary classification
 // a*PredictorScores = logWeights for multiclass classification
 // a*PredictorScores = predictedValue for regression
-static BoosterHandle CreateBooster(
+static ErrorEbmType CreateBooster(
    const SeedEbmType randomSeed,
    const IntEbmType countFeatures,
    const BoolEbmType * const aFeaturesCategorical,
@@ -193,95 +176,99 @@ static BoosterHandle CreateBooster(
    const FloatEbmType * const aValidationWeights,
    const FloatEbmType * const validationPredictorScores,
    const IntEbmType countInnerBags,
-   const FloatEbmType * const optionalTempParams
+   const FloatEbmType * const optionalTempParams,
+   BoosterHandle * boosterHandleOut
 ) {
    // TODO : give CreateBooster the same calling parameter order as CreateClassificationBooster
 
+   EBM_ASSERT(nullptr != boosterHandleOut);
+   EBM_ASSERT(nullptr == *boosterHandleOut);
+
    if(countFeatures < 0) {
       LOG_0(TraceLevelError, "ERROR CreateBooster countFeatures must be positive");
-      return nullptr;
+      return Error_IllegalParamValue;
    }
    if(0 != countFeatures && nullptr == aFeaturesCategorical) {
       // TODO: in the future maybe accept null aFeaturesCategorical and assume there are no missing values
       LOG_0(TraceLevelError, "ERROR CreateBooster aFeaturesCategorical cannot be nullptr if 0 < countFeatures");
-      return nullptr;
+      return Error_IllegalParamValue;
    }
    if(0 != countFeatures && nullptr == aFeaturesBinCount) {
       LOG_0(TraceLevelError, "ERROR CreateBooster aFeaturesBinCount cannot be nullptr if 0 < countFeatures");
-      return nullptr;
+      return Error_IllegalParamValue;
    }
    if(countFeatureGroups < 0) {
       LOG_0(TraceLevelError, "ERROR CreateBooster countFeatureGroups must be positive");
-      return nullptr;
+      return Error_IllegalParamValue;
    }
    if(0 != countFeatureGroups && nullptr == aFeatureGroupsDimensionCount) {
       LOG_0(TraceLevelError, "ERROR CreateBooster aFeatureGroupsDimensionCount cannot be nullptr if 0 < countFeatureGroups");
-      return nullptr;
+      return Error_IllegalParamValue;
    }
    // aFeatureGroupsFeatureIndexes -> it's legal for aFeatureGroupsFeatureIndexes to be nullptr if there are no features indexed by our featureGroups.  
    // FeatureGroups can have zero features, so it could be legal for this to be null even if there are aFeatureGroupsDimensionCount
    if(countTrainingSamples < 0) {
       LOG_0(TraceLevelError, "ERROR CreateBooster countTrainingSamples must be positive");
-      return nullptr;
+      return Error_IllegalParamValue;
    }
    if(0 != countTrainingSamples && nullptr == trainingTargets) {
       LOG_0(TraceLevelError, "ERROR CreateBooster trainingTargets cannot be nullptr if 0 < countTrainingSamples");
-      return nullptr;
+      return Error_IllegalParamValue;
    }
    if(0 != countTrainingSamples && 0 != countFeatures && nullptr == trainingBinnedData) {
       LOG_0(TraceLevelError, "ERROR CreateBooster trainingBinnedData cannot be nullptr if 0 < countTrainingSamples AND 0 < countFeatures");
-      return nullptr;
+      return Error_IllegalParamValue;
    }
    if(0 != countTrainingSamples && nullptr == trainingPredictorScores) {
       LOG_0(TraceLevelError, "ERROR CreateBooster trainingPredictorScores cannot be nullptr if 0 < countTrainingSamples");
-      return nullptr;
+      return Error_IllegalParamValue;
    }
    if(countValidationSamples < 0) {
       LOG_0(TraceLevelError, "ERROR CreateBooster countValidationSamples must be positive");
-      return nullptr;
+      return Error_IllegalParamValue;
    }
    if(0 != countValidationSamples && nullptr == validationTargets) {
       LOG_0(TraceLevelError, "ERROR CreateBooster validationTargets cannot be nullptr if 0 < countValidationSamples");
-      return nullptr;
+      return Error_IllegalParamValue;
    }
    if(0 != countValidationSamples && 0 != countFeatures && nullptr == validationBinnedData) {
       LOG_0(TraceLevelError, "ERROR CreateBooster validationBinnedData cannot be nullptr if 0 < countValidationSamples AND 0 < countFeatures");
-      return nullptr;
+      return Error_IllegalParamValue;
    }
    if(0 != countValidationSamples && nullptr == validationPredictorScores) {
       LOG_0(TraceLevelError, "ERROR CreateBooster validationPredictorScores cannot be nullptr if 0 < countValidationSamples");
-      return nullptr;
+      return Error_IllegalParamValue;
    }
    if(countInnerBags < 0) {
       // 0 means use the full set (good value).  1 means make a single bag (this is useless but allowed for comparison purposes).  2+ are good numbers of bag
       LOG_0(TraceLevelError, "ERROR CreateBooster countInnerBags must be positive");
-      return nullptr;
+      return Error_UserParamValue;
    }
    if(!IsNumberConvertable<size_t>(countFeatures)) {
       // the caller should not have been able to allocate enough memory in "features" if this didn't fit in memory
       LOG_0(TraceLevelError, "ERROR CreateBooster !IsNumberConvertable<size_t>(countFeatures)");
-      return nullptr;
+      return Error_IllegalParamValue;
    }
    if(!IsNumberConvertable<size_t>(countFeatureGroups)) {
       // the caller should not have been able to allocate enough memory in "aFeatureGroupsDimensionCount" if this didn't fit in memory
       LOG_0(TraceLevelError, "ERROR CreateBooster !IsNumberConvertable<size_t>(countFeatureGroups)");
-      return nullptr;
+      return Error_IllegalParamValue;
    }
    if(!IsNumberConvertable<size_t>(countTrainingSamples)) {
       // the caller should not have been able to allocate enough memory in "trainingTargets" if this didn't fit in memory
       LOG_0(TraceLevelError, "ERROR CreateBooster !IsNumberConvertable<size_t>(countTrainingSamples)");
-      return nullptr;
+      return Error_IllegalParamValue;
    }
    if(!IsNumberConvertable<size_t>(countValidationSamples)) {
       // the caller should not have been able to allocate enough memory in "validationTargets" if this didn't fit in memory
       LOG_0(TraceLevelError, "ERROR CreateBooster !IsNumberConvertable<size_t>(countValidationSamples)");
-      return nullptr;
+      return Error_IllegalParamValue;
    }
    if(!IsNumberConvertable<size_t>(countInnerBags)) {
       // this is just a warning since the caller doesn't pass us anything material, but if it's this high
       // then our allocation would fail since it can't even in pricipal fit into memory
       LOG_0(TraceLevelWarning, "WARNING CreateBooster !IsNumberConvertable<size_t>(countInnerBags)");
-      return nullptr;
+      return Error_OutOfMemory;
    }
 
    size_t cFeatures = static_cast<size_t>(countFeatures);
@@ -295,18 +282,18 @@ static BoosterHandle CreateBooster(
    if(IsMultiplyError(cVectorLength, cTrainingSamples)) {
       // the caller should not have been able to allocate enough memory in "trainingPredictorScores" if this didn't fit in memory
       LOG_0(TraceLevelError, "ERROR CreateBooster IsMultiplyError(cVectorLength, cTrainingSamples)");
-      return nullptr;
+      return Error_IllegalParamValue; // our input data wouldn't fit in memory
    }
    if(IsMultiplyError(cVectorLength, cValidationSamples)) {
       // the caller should not have been able to allocate enough memory in "validationPredictorScores" if this didn't fit in memory
       LOG_0(TraceLevelError, "ERROR CreateBooster IsMultiplyError(cVectorLength, cValidationSamples)");
-      return nullptr;
+      return Error_IllegalParamValue; // our input data wouldn't fit in memory
    }
 
    BoosterShell * const pBoosterShell = BoosterShell::Create();
    if(UNLIKELY(nullptr == pBoosterShell)) {
       LOG_0(TraceLevelWarning, "WARNING CreateBooster nullptr == pBoosterShell");
-      return nullptr;
+      return Error_OutOfMemory;
    }
 
    // TODO: pass in the pBoosterShell so that BoosterCore can immediately attach itself to the pBoosterShell
@@ -337,21 +324,23 @@ static BoosterHandle CreateBooster(
    if(UNLIKELY(nullptr == pBoosterCore)) {
       BoosterShell::Free(pBoosterShell);
       LOG_0(TraceLevelWarning, "WARNING CreateBooster pBoosterCore->Initialize");
-      return nullptr;
+      return Error_OutOfMemory;
    }
 
    pBoosterShell->SetBoosterCore(pBoosterCore); // assume ownership of pBoosterCore
 
-   if(Error_None != pBoosterShell->FillAllocations()) {
+   const ErrorEbmType error = pBoosterShell->FillAllocations();
+   if(Error_None != error) {
       // don't free the pBoosterCore since pBoosterShell now owns it
       BoosterShell::Free(pBoosterShell);
-      return nullptr;
+      return error;
    }
 
-   return reinterpret_cast<BoosterHandle>(pBoosterShell);
+   *boosterHandleOut = pBoosterShell->GetHandle();
+   return Error_None;
 }
 
-EBM_NATIVE_IMPORT_EXPORT_BODY BoosterHandle EBM_NATIVE_CALLING_CONVENTION CreateClassificationBooster(
+EBM_NATIVE_IMPORT_EXPORT_BODY ErrorEbmType EBM_NATIVE_CALLING_CONVENTION CreateClassificationBooster(
    SeedEbmType randomSeed,
    IntEbmType countTargetClasses,
    IntEbmType countFeatures,
@@ -371,7 +360,8 @@ EBM_NATIVE_IMPORT_EXPORT_BODY BoosterHandle EBM_NATIVE_CALLING_CONVENTION Create
    const FloatEbmType * validationWeights,
    const FloatEbmType * validationPredictorScores,
    IntEbmType countInnerBags,
-   const FloatEbmType * optionalTempParams
+   const FloatEbmType * optionalTempParams,
+   BoosterHandle * boosterHandleOut
 ) {
    LOG_N(
       TraceLevelInfo,
@@ -395,7 +385,8 @@ EBM_NATIVE_IMPORT_EXPORT_BODY BoosterHandle EBM_NATIVE_CALLING_CONVENTION Create
       "validationWeights=%p, "
       "validationPredictorScores=%p, "
       "countInnerBags=%" IntEbmTypePrintf ", "
-      "optionalTempParams=%p"
+      "optionalTempParams=%p, "
+      "boosterHandleOut=%p"
       ,
       randomSeed,
       countTargetClasses,
@@ -416,22 +407,31 @@ EBM_NATIVE_IMPORT_EXPORT_BODY BoosterHandle EBM_NATIVE_CALLING_CONVENTION Create
       static_cast<const void *>(validationWeights),
       static_cast<const void *>(validationPredictorScores),
       countInnerBags,
-      static_cast<const void *>(optionalTempParams)
+      static_cast<const void *>(optionalTempParams),
+      static_cast<const void *>(boosterHandleOut)
    );
+
+   if(nullptr == boosterHandleOut) {
+      LOG_0(TraceLevelError, "ERROR CreateClassificationBooster nullptr == boosterHandleOut");
+      return Error_IllegalParamValue;
+   }
+   *boosterHandleOut = nullptr; // set this to nullptr as soon as possible so the caller doesn't attempt to free it
+
    if(countTargetClasses < 0) {
       LOG_0(TraceLevelError, "ERROR CreateClassificationBooster countTargetClasses can't be negative");
-      return nullptr;
+      return Error_IllegalParamValue;
    }
    if(0 == countTargetClasses && (0 != countTrainingSamples || 0 != countValidationSamples)) {
       LOG_0(TraceLevelError, "ERROR CreateClassificationBooster countTargetClasses can't be zero unless there are no training and no validation cases");
-      return nullptr;
+      return Error_IllegalParamValue;
    }
    if(!IsNumberConvertable<ptrdiff_t>(countTargetClasses)) {
       LOG_0(TraceLevelWarning, "WARNING CreateClassificationBooster !IsNumberConvertable<ptrdiff_t>(countTargetClasses)");
-      return nullptr;
+      // we didn't run out of memory, but we will if we accept this and it's not worth making a new error code
+      return Error_OutOfMemory;
    }
    const ptrdiff_t runtimeLearningTypeOrCountTargetClasses = static_cast<ptrdiff_t>(countTargetClasses);
-   const BoosterHandle boosterHandle = CreateBooster(
+   const ErrorEbmType error = CreateBooster(
       randomSeed,
       countFeatures,
       featuresCategorical,
@@ -451,13 +451,22 @@ EBM_NATIVE_IMPORT_EXPORT_BODY BoosterHandle EBM_NATIVE_CALLING_CONVENTION Create
       validationWeights,
       validationPredictorScores,
       countInnerBags,
-      optionalTempParams
+      optionalTempParams,
+      boosterHandleOut
    );
-   LOG_N(TraceLevelInfo, "Exited CreateClassificationBooster %p", static_cast<void *>(boosterHandle));
-   return boosterHandle;
+
+   LOG_N(TraceLevelInfo, "Exited CreateClassificationBooster: "
+      "*boosterHandleOut=%p, "
+      "return=%" ErrorEbmTypePrintf
+      ,
+      static_cast<void *>(*boosterHandleOut),
+      error
+   );
+
+   return error;
 }
 
-EBM_NATIVE_IMPORT_EXPORT_BODY BoosterHandle EBM_NATIVE_CALLING_CONVENTION CreateRegressionBooster(
+EBM_NATIVE_IMPORT_EXPORT_BODY ErrorEbmType EBM_NATIVE_CALLING_CONVENTION CreateRegressionBooster(
    SeedEbmType randomSeed,
    IntEbmType countFeatures,
    const BoolEbmType * featuresCategorical,
@@ -476,7 +485,8 @@ EBM_NATIVE_IMPORT_EXPORT_BODY BoosterHandle EBM_NATIVE_CALLING_CONVENTION Create
    const FloatEbmType * validationWeights,
    const FloatEbmType * validationPredictorScores,
    IntEbmType countInnerBags,
-   const FloatEbmType * optionalTempParams
+   const FloatEbmType * optionalTempParams,
+   BoosterHandle * boosterHandleOut
 ) {
    LOG_N(
       TraceLevelInfo,
@@ -499,7 +509,8 @@ EBM_NATIVE_IMPORT_EXPORT_BODY BoosterHandle EBM_NATIVE_CALLING_CONVENTION Create
       "validationWeights=%p, "
       "validationPredictorScores=%p, "
       "countInnerBags=%" IntEbmTypePrintf ", "
-      "optionalTempParams=%p"
+      "optionalTempParams=%p, "
+      "boosterHandleOut=%p"
       ,
       randomSeed,
       countFeatures,
@@ -519,9 +530,17 @@ EBM_NATIVE_IMPORT_EXPORT_BODY BoosterHandle EBM_NATIVE_CALLING_CONVENTION Create
       static_cast<const void *>(validationWeights),
       static_cast<const void *>(validationPredictorScores),
       countInnerBags,
-      static_cast<const void *>(optionalTempParams)
+      static_cast<const void *>(optionalTempParams),
+      static_cast<const void *>(boosterHandleOut)
    );
-   const BoosterHandle boosterHandle = CreateBooster(
+
+   if(nullptr == boosterHandleOut) {
+      LOG_0(TraceLevelError, "ERROR CreateRegressionBooster nullptr == boosterHandleOut");
+      return Error_IllegalParamValue;
+   }
+   *boosterHandleOut = nullptr; // set this to nullptr as soon as possible so the caller doesn't attempt to free it
+
+   const ErrorEbmType error = CreateBooster(
       randomSeed,
       countFeatures,
       featuresCategorical,
@@ -541,13 +560,71 @@ EBM_NATIVE_IMPORT_EXPORT_BODY BoosterHandle EBM_NATIVE_CALLING_CONVENTION Create
       validationWeights,
       validationPredictorScores,
       countInnerBags,
-      optionalTempParams
+      optionalTempParams,
+      boosterHandleOut
    );
-   LOG_N(TraceLevelInfo, "Exited CreateRegressionBooster %p", static_cast<void *>(boosterHandle));
-   return boosterHandle;
+
+   LOG_N(TraceLevelInfo, "Exited CreateRegressionBooster: "
+      "*boosterHandleOut=%p, "
+      "return=%" ErrorEbmTypePrintf
+      ,
+      static_cast<void *>(*boosterHandleOut),
+      error
+   );
+
+   return error;
 }
 
-EBM_NATIVE_IMPORT_EXPORT_BODY IntEbmType EBM_NATIVE_CALLING_CONVENTION GetBestModelFeatureGroup(
+EBM_NATIVE_IMPORT_EXPORT_BODY ErrorEbmType EBM_NATIVE_CALLING_CONVENTION CreateBoosterView(
+   BoosterHandle boosterHandle,
+   BoosterHandle * boosterHandleViewOut
+) {
+   LOG_N(
+      TraceLevelInfo,
+      "Entered CreateBoosterView: "
+      "boosterHandle=%p, "
+      "boosterHandleViewOut=%p"
+      ,
+      static_cast<void *>(boosterHandle),
+      static_cast<void *>(boosterHandleViewOut)
+   );
+
+   if(UNLIKELY(nullptr == boosterHandleViewOut)) {
+      LOG_0(TraceLevelWarning, "WARNING CreateBooster nullptr == boosterHandleViewOut");
+      return Error_IllegalParamValue;
+   }
+   *boosterHandleViewOut = nullptr; // set this as soon as possible so our caller doesn't end up freeing garbage
+
+   BoosterShell * const pBoosterShellOriginal = BoosterShell::GetBoosterShellFromBoosterHandle(boosterHandle);
+   if(nullptr == pBoosterShellOriginal) {
+      // already logged
+      return Error_IllegalParamValue;
+   }
+
+   BoosterShell * const pBoosterShellNew = BoosterShell::Create();
+   if(UNLIKELY(nullptr == pBoosterShellNew)) {
+      LOG_0(TraceLevelWarning, "WARNING CreateBooster nullptr == pBoosterShellNew");
+      return Error_OutOfMemory;
+   }
+
+   BoosterCore * const pBoosterCore = pBoosterShellOriginal->GetBoosterCore();
+   pBoosterCore->AddReferenceCount();
+   pBoosterShellNew->SetBoosterCore(pBoosterCore); // assume ownership of pBoosterCore reference count increment
+
+   const ErrorEbmType error = pBoosterShellNew->FillAllocations();
+   if(Error_None != error) {
+      // TODO: we might move the call to FillAllocations to be more lazy incase the caller doesn't use it all
+      BoosterShell::Free(pBoosterShellNew);
+      return error;
+   }
+
+   LOG_0(TraceLevelInfo, "Exited CreateBoosterView");
+
+   *boosterHandleViewOut = pBoosterShellNew->GetHandle();
+   return Error_None;
+}
+
+EBM_NATIVE_IMPORT_EXPORT_BODY ErrorEbmType EBM_NATIVE_CALLING_CONVENTION GetBestModelFeatureGroup(
    BoosterHandle boosterHandle,
    IntEbmType indexFeatureGroup,
    FloatEbmType * modelFeatureGroupTensorOut
@@ -564,26 +641,27 @@ EBM_NATIVE_IMPORT_EXPORT_BODY IntEbmType EBM_NATIVE_CALLING_CONVENTION GetBestMo
       modelFeatureGroupTensorOut
    );
 
-   BoosterShell * const pBoosterShell = reinterpret_cast<BoosterShell *>(boosterHandle);
+   BoosterShell * const pBoosterShell = BoosterShell::GetBoosterShellFromBoosterHandle(boosterHandle);
    if(nullptr == pBoosterShell) {
-      LOG_0(TraceLevelError, "ERROR GetBestModelFeatureGroup boosterHandle cannot be nullptr");
-      return IntEbmType { 1 };
+      // already logged
+      return Error_IllegalParamValue;
    }
+
    if(indexFeatureGroup < 0) {
       LOG_0(TraceLevelError, "ERROR GetBestModelFeatureGroup indexFeatureGroup must be positive");
-      return IntEbmType { 1 };
+      return Error_IllegalParamValue;
    }
    if(!IsNumberConvertable<size_t>(indexFeatureGroup)) {
       // we wouldn't have allowed the creation of an feature set larger than size_t
       LOG_0(TraceLevelError, "ERROR GetBestModelFeatureGroup indexFeatureGroup is too high to index");
-      return IntEbmType { 1 };
+      return Error_IllegalParamValue;
    }
    size_t iFeatureGroup = static_cast<size_t>(indexFeatureGroup);
 
    BoosterCore * const pBoosterCore = pBoosterShell->GetBoosterCore();
    if(pBoosterCore->GetCountFeatureGroups() <= iFeatureGroup) {
       LOG_0(TraceLevelError, "ERROR GetBestModelFeatureGroup indexFeatureGroup above the number of feature groups that we have");
-      return IntEbmType { 1 };
+      return Error_IllegalParamValue;
    }
 
    if(ptrdiff_t { 0 } == pBoosterCore->GetRuntimeLearningTypeOrCountTargetClasses() ||
@@ -592,12 +670,12 @@ EBM_NATIVE_IMPORT_EXPORT_BODY IntEbmType EBM_NATIVE_CALLING_CONVENTION GetBestMo
       // If there were logits in this model, they'd all be infinity, but you could alternatively think of this 
       // model as having no logits, since the number of logits can be one less than the number of target classes.
       LOG_0(TraceLevelInfo, "Exited GetBestModelFeatureGroup no model");
-      return IntEbmType { 0 };
+      return Error_None;
    }
 
    if(nullptr == modelFeatureGroupTensorOut) {
       LOG_0(TraceLevelError, "ERROR GetBestModelFeatureGroup modelFeatureGroupTensorOut cannot be nullptr");
-      return IntEbmType { 1 };
+      return Error_IllegalParamValue;
    }
 
    // if pBoosterCore->GetFeatureGroups() is nullptr, then m_cFeatureGroups was 0, but we checked above that 
@@ -634,10 +712,10 @@ EBM_NATIVE_IMPORT_EXPORT_BODY IntEbmType EBM_NATIVE_CALLING_CONVENTION GetBestMo
    memcpy(modelFeatureGroupTensorOut, pValues, sizeof(*pValues) * cValues);
 
    LOG_0(TraceLevelInfo, "Exited GetBestModelFeatureGroup");
-   return IntEbmType { 0 };
+   return Error_None;
 }
 
-EBM_NATIVE_IMPORT_EXPORT_BODY IntEbmType EBM_NATIVE_CALLING_CONVENTION GetCurrentModelFeatureGroup(
+EBM_NATIVE_IMPORT_EXPORT_BODY ErrorEbmType EBM_NATIVE_CALLING_CONVENTION GetCurrentModelFeatureGroup(
    BoosterHandle boosterHandle,
    IntEbmType indexFeatureGroup,
    FloatEbmType * modelFeatureGroupTensorOut
@@ -654,26 +732,27 @@ EBM_NATIVE_IMPORT_EXPORT_BODY IntEbmType EBM_NATIVE_CALLING_CONVENTION GetCurren
       modelFeatureGroupTensorOut
    );
 
-   BoosterShell * const pBoosterShell = reinterpret_cast<BoosterShell *>(boosterHandle);
+   BoosterShell * const pBoosterShell = BoosterShell::GetBoosterShellFromBoosterHandle(boosterHandle);
    if(nullptr == pBoosterShell) {
-      LOG_0(TraceLevelError, "ERROR GetCurrentModelFeatureGroup boosterHandle cannot be nullptr");
-      return IntEbmType { 1 };
+      // already logged
+      return Error_IllegalParamValue;
    }
+
    if(indexFeatureGroup < 0) {
       LOG_0(TraceLevelError, "ERROR GetCurrentModelFeatureGroup indexFeatureGroup must be positive");
-      return IntEbmType { 1 };
+      return Error_IllegalParamValue;
    }
    if(!IsNumberConvertable<size_t>(indexFeatureGroup)) {
       // we wouldn't have allowed the creation of an feature set larger than size_t
       LOG_0(TraceLevelError, "ERROR GetCurrentModelFeatureGroup indexFeatureGroup is too high to index");
-      return IntEbmType { 1 };
+      return Error_IllegalParamValue;
    }
    size_t iFeatureGroup = static_cast<size_t>(indexFeatureGroup);
 
    BoosterCore * const pBoosterCore = pBoosterShell->GetBoosterCore();
    if(pBoosterCore->GetCountFeatureGroups() <= iFeatureGroup) {
       LOG_0(TraceLevelError, "ERROR GetCurrentModelFeatureGroup indexFeatureGroup above the number of feature groups that we have");
-      return IntEbmType { 1 };
+      return Error_IllegalParamValue;
    }
 
    if(ptrdiff_t { 0 } == pBoosterCore->GetRuntimeLearningTypeOrCountTargetClasses() ||
@@ -682,12 +761,12 @@ EBM_NATIVE_IMPORT_EXPORT_BODY IntEbmType EBM_NATIVE_CALLING_CONVENTION GetCurren
       // If there were logits in this model, they'd all be infinity, but you could alternatively think of this 
       // model as having no logits, since the number of logits can be one less than the number of target classes.
       LOG_0(TraceLevelInfo, "Exited GetCurrentModelFeatureGroup no model");
-      return IntEbmType { 0 };
+      return Error_None;
    }
 
    if(nullptr == modelFeatureGroupTensorOut) {
       LOG_0(TraceLevelError, "ERROR GetCurrentModelFeatureGroup modelFeatureGroupTensorOut cannot be nullptr");
-      return IntEbmType { 1 };
+      return Error_IllegalParamValue;
    }
 
    // if pBoosterCore->GetFeatureGroups() is nullptr, then m_cFeatureGroups was 0, but we checked above that 
@@ -724,7 +803,7 @@ EBM_NATIVE_IMPORT_EXPORT_BODY IntEbmType EBM_NATIVE_CALLING_CONVENTION GetCurren
    memcpy(modelFeatureGroupTensorOut, pValues, sizeof(*pValues) * cValues);
 
    LOG_0(TraceLevelInfo, "Exited GetCurrentModelFeatureGroup");
-   return IntEbmType { 0 };
+   return Error_None;
 }
 
 EBM_NATIVE_IMPORT_EXPORT_BODY void EBM_NATIVE_CALLING_CONVENTION FreeBooster(
@@ -732,7 +811,9 @@ EBM_NATIVE_IMPORT_EXPORT_BODY void EBM_NATIVE_CALLING_CONVENTION FreeBooster(
 ) {
    LOG_N(TraceLevelInfo, "Entered FreeBooster: boosterHandle=%p", static_cast<void *>(boosterHandle));
 
-   BoosterShell * const pBoosterShell = reinterpret_cast<BoosterShell *>(boosterHandle);
+   BoosterShell * const pBoosterShell = BoosterShell::GetBoosterShellFromBoosterHandle(boosterHandle);
+   // if the conversion above doesn't work, it'll return null, and our free will not in fact free any memory,
+   // but it will not crash. We'll leak memory, but at least we'll log that.
 
    // it's legal to call free on nullptr, just like for free().  This is checked inside BoosterCore::Free()
    BoosterShell::Free(pBoosterShell);

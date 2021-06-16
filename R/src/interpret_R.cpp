@@ -105,24 +105,13 @@ void BoostingFinalizer(SEXP boosterHandleWrapped) {
    }
 }
 
-void ThreadStateBoostingFinalizer(SEXP threadStateBoostingHandleWrapped) {
-   EBM_ASSERT(nullptr != threadStateBoostingHandleWrapped); // shouldn't be possible
-   if(EXTPTRSXP == TYPEOF(threadStateBoostingHandleWrapped)) {
-      const ThreadStateBoostingHandle threadStateBoostingHandle = static_cast<ThreadStateBoostingHandle>(R_ExternalPtrAddr(threadStateBoostingHandleWrapped));
-      if(nullptr != threadStateBoostingHandle) {
-         FreeThreadStateBoosting(threadStateBoostingHandle);
-         R_ClearExternalPtr(threadStateBoostingHandleWrapped);
-      }
-   }
-}
-
-void InteractionFinalizer(SEXP interactionDetectorHandleWrapped) {
-   EBM_ASSERT(nullptr != interactionDetectorHandleWrapped); // shouldn't be possible
-   if(EXTPTRSXP == TYPEOF(interactionDetectorHandleWrapped)) {
-      const InteractionDetectorHandle interactionDetectorHandle = static_cast<InteractionDetectorHandle>(R_ExternalPtrAddr(interactionDetectorHandleWrapped));
-      if(nullptr != interactionDetectorHandle) {
-         FreeInteractionDetector(interactionDetectorHandle);
-         R_ClearExternalPtr(interactionDetectorHandleWrapped);
+void InteractionFinalizer(SEXP interactionHandleWrapped) {
+   EBM_ASSERT(nullptr != interactionHandleWrapped); // shouldn't be possible
+   if(EXTPTRSXP == TYPEOF(interactionHandleWrapped)) {
+      const InteractionHandle interactionHandle = static_cast<InteractionHandle>(R_ExternalPtrAddr(interactionHandleWrapped));
+      if(nullptr != interactionHandle) {
+         FreeInteractionDetector(interactionHandle);
+         R_ClearExternalPtr(interactionHandleWrapped);
       }
    }
 }
@@ -355,7 +344,7 @@ SEXP CutQuantile_R(
       R_alloc(static_cast<size_t>(countCutsIntEbmType), static_cast<int>(sizeof(FloatEbmType))));
    EBM_ASSERT(nullptr != aCutsLowerBoundInclusive); // R_alloc doesn't return nullptr, so we don't need to check aItems
 
-   const IntEbmType error = CutQuantile(
+   const ErrorEbmType error = CutQuantile(
       static_cast<IntEbmType>(cFeatureValues),
       aFeatureValues,
       countSamplesPerBinMinIntEbmType,
@@ -369,7 +358,7 @@ SEXP CutQuantile_R(
       nullptr
    );
 
-   if(0 != error) {
+   if(Error_None != error) {
       return R_NilValue;
    }
 
@@ -446,7 +435,7 @@ SEXP Discretize_R(
          reinterpret_cast<IntEbmType *>(R_alloc(cFeatureValues, static_cast<int>(sizeof(IntEbmType))));
       EBM_ASSERT(nullptr != aDiscretized); // this can't be nullptr since R_alloc uses R error handling
 
-      if(0 != Discretize(
+      if(Error_None != Discretize(
          static_cast<IntEbmType>(cFeatureValues),
          aFeatureValues,
          static_cast<IntEbmType>(cCuts),
@@ -788,7 +777,8 @@ SEXP CreateClassificationBooster_R(
       pValidationWeights = REAL(validationWeights);
    }
 
-   const BoosterHandle boosterHandle = CreateClassificationBooster(
+   BoosterHandle boosterHandle;
+   const ErrorEbmType error = CreateClassificationBooster(
       randomSeedLocal,
       static_cast<IntEbmType>(cTargetClasses),
       countFeatures, 
@@ -808,10 +798,11 @@ SEXP CreateClassificationBooster_R(
       pValidationWeights,
       aValidationPredictorScores,
       countInnerBagsLocal, 
-      nullptr
+      nullptr,
+      &boosterHandle
    );
 
-   if(nullptr == boosterHandle) {
+   if(Error_None != error || nullptr == boosterHandle) {
       return R_NilValue;
    }
 
@@ -1024,7 +1015,8 @@ SEXP CreateRegressionBooster_R(
       pValidationWeights = REAL(validationWeights);
    }
 
-   const BoosterHandle boosterHandle = CreateRegressionBooster(
+   BoosterHandle boosterHandle;
+   const ErrorEbmType error = CreateRegressionBooster(
       randomSeedLocal,
       countFeatures,
       aFeaturesCategorical,
@@ -1043,10 +1035,10 @@ SEXP CreateRegressionBooster_R(
       pValidationWeights, 
       aValidationPredictorScores,
       countInnerBagsLocal, 
-      nullptr
+      nullptr,
+      &boosterHandle
    );
-
-   if(nullptr == boosterHandle) {
+   if(Error_None != error || nullptr == boosterHandle) {
       return R_NilValue;
    }
 
@@ -1060,29 +1052,26 @@ SEXP CreateRegressionBooster_R(
 }
 
 SEXP GenerateModelUpdate_R(
-   SEXP threadStateBoostingHandleWrapped,
+   SEXP boosterHandleWrapped,
    SEXP indexFeatureGroup,
    SEXP learningRate,
    SEXP countSamplesRequiredForChildSplitMin,
    SEXP leavesMax
 ) {
-   EBM_ASSERT(nullptr != threadStateBoostingHandleWrapped);
+   EBM_ASSERT(nullptr != boosterHandleWrapped);
    EBM_ASSERT(nullptr != indexFeatureGroup);
    EBM_ASSERT(nullptr != learningRate);
    EBM_ASSERT(nullptr != countSamplesRequiredForChildSplitMin);
    EBM_ASSERT(nullptr != leavesMax);
 
-   if(EXTPTRSXP != TYPEOF(threadStateBoostingHandleWrapped)) {
-      LOG_0(TraceLevelError, "ERROR GenerateModelUpdate_R EXTPTRSXP != TYPEOF(threadStateBoostingHandleWrapped)");
+   if(EXTPTRSXP != TYPEOF(boosterHandleWrapped)) {
+      LOG_0(TraceLevelError, "ERROR GenerateModelUpdate_R EXTPTRSXP != TYPEOF(boosterHandleWrapped)");
       return R_NilValue;
    }
-   BoosterShell * pBoosterShell = static_cast<BoosterShell *>(R_ExternalPtrAddr(threadStateBoostingHandleWrapped));
+   const BoosterHandle boosterHandle = static_cast<BoosterHandle>(R_ExternalPtrAddr(boosterHandleWrapped));
+   BoosterShell * const pBoosterShell = BoosterShell::GetBoosterShellFromBoosterHandle(boosterHandle);
    if(nullptr == pBoosterShell) {
-      LOG_0(TraceLevelError, "ERROR GenerateModelUpdate_R nullptr == pBoosterShell");
-      return R_NilValue;
-   }
-   if(!pBoosterShell->IsValid()) {
-      LOG_0(TraceLevelError, "ERROR GenerateModelUpdate_R !pBoosterShell->IsValid()");
+      // already logged
       return R_NilValue;
    }
 
@@ -1138,15 +1127,17 @@ SEXP GenerateModelUpdate_R(
    }
 
    FloatEbmType gainOut;
-   if(0 != GenerateModelUpdate(
-      reinterpret_cast<ThreadStateBoostingHandle>(pBoosterShell),
+
+   const ErrorEbmType error = GenerateModelUpdate(
+      boosterHandle,
       static_cast<IntEbmType>(iFeatureGroup),
       GenerateUpdateOptions_Default,
       learningRateLocal,
       countEbmSamplesRequiredForChildSplitMin,
       aLeavesMax,
       &gainOut
-   )) {
+   );
+   if(Error_None != error) {
       LOG_0(TraceLevelWarning, "WARNING GenerateModelUpdate_R BoostingStep returned error code");
       return R_NilValue;
    }
@@ -1158,25 +1149,20 @@ SEXP GenerateModelUpdate_R(
 }
 
 SEXP ApplyModelUpdate_R(
-   SEXP threadStateBoostingHandleWrapped
+   SEXP boosterHandleWrapped
 ) {
-   EBM_ASSERT(nullptr != threadStateBoostingHandleWrapped);
+   EBM_ASSERT(nullptr != boosterHandleWrapped);
 
-   if(EXTPTRSXP != TYPEOF(threadStateBoostingHandleWrapped)) {
-      LOG_0(TraceLevelError, "ERROR ApplyModelUpdate_R EXTPTRSXP != TYPEOF(threadStateBoostingHandleWrapped)");
+   if(EXTPTRSXP != TYPEOF(boosterHandleWrapped)) {
+      LOG_0(TraceLevelError, "ERROR ApplyModelUpdate_R EXTPTRSXP != TYPEOF(boosterHandleWrapped)");
       return R_NilValue;
    }
-   BoosterShell * pBoosterShell = static_cast<BoosterShell *>(R_ExternalPtrAddr(threadStateBoostingHandleWrapped));
-   if(nullptr == pBoosterShell) {
-      LOG_0(TraceLevelError, "ERROR ApplyModelUpdate_R nullptr == pBoosterShell");
-      return R_NilValue;
-   }
+   const BoosterHandle boosterHandle = static_cast<BoosterHandle>(R_ExternalPtrAddr(boosterHandleWrapped));
+   // we don't use boosterHandle in this function, so let ApplyModelUpdate check if it's null or invalid
 
    FloatEbmType validationMetricOut;
-   if(0 != ApplyModelUpdate(
-      reinterpret_cast<ThreadStateBoostingHandle>(pBoosterShell),
-      &validationMetricOut
-   )) {
+   const ErrorEbmType error = ApplyModelUpdate(boosterHandle, &validationMetricOut);
+   if(Error_None != error) {
       LOG_0(TraceLevelWarning, "WARNING ApplyModelUpdate_R ApplyModelUpdate returned error code");
       return R_NilValue;
    }
@@ -1198,11 +1184,13 @@ SEXP GetBestModelFeatureGroup_R(
       LOG_0(TraceLevelError, "ERROR GetBestModelFeatureGroup_R EXTPTRSXP != TYPEOF(boosterHandleWrapped)");
       return R_NilValue;
    }
-   BoosterCore * const pBoosterCore = static_cast<BoosterCore *>(R_ExternalPtrAddr(boosterHandleWrapped));
-   if(nullptr == pBoosterCore) {
-      LOG_0(TraceLevelError, "ERROR GetBestModelFeatureGroup_R nullptr == pBoosterCore");
+   const BoosterHandle boosterHandle = static_cast<BoosterHandle>(R_ExternalPtrAddr(boosterHandleWrapped));
+   BoosterShell * const pBoosterShell = BoosterShell::GetBoosterShellFromBoosterHandle(boosterHandle);
+   if(nullptr == pBoosterShell) {
+      // already logged
       return R_NilValue;
    }
+   BoosterCore * const pBoosterCore = pBoosterShell->GetBoosterCore();
 
    if(!IsSingleDoubleVector(indexFeatureGroup)) {
       LOG_0(TraceLevelError, "ERROR GetBestModelFeatureGroup_R !IsSingleDoubleVector(indexFeatureGroup)");
@@ -1239,11 +1227,11 @@ SEXP GetBestModelFeatureGroup_R(
    SEXP ret = PROTECT(allocVector(REALSXP, static_cast<R_xlen_t>(cValues)));
    EBM_ASSERT(!IsMultiplyError(sizeof(double), cValues)); // we've allocated this memory, so it should be reachable, so these numbers should multiply
 
-   const IntEbmType error = GetBestModelFeatureGroup(reinterpret_cast<BoosterHandle>(pBoosterCore), static_cast<IntEbmType>(iFeatureGroup), REAL(ret));
+   const ErrorEbmType error = GetBestModelFeatureGroup(boosterHandle, static_cast<IntEbmType>(iFeatureGroup), REAL(ret));
 
    UNPROTECT(1);
 
-   if(IntEbmType { 0 } != error) {
+   if(Error_None != error) {
       LOG_0(TraceLevelWarning, "WARNING GetBestModelFeatureGroup_R IntEbmType { 0 } != error");
       return R_NilValue;
    }
@@ -1261,11 +1249,13 @@ SEXP GetCurrentModelFeatureGroup_R(
       LOG_0(TraceLevelError, "ERROR GetCurrentModelFeatureGroup_R EXTPTRSXP != TYPEOF(boosterHandleWrapped)");
       return R_NilValue;
    }
-   BoosterCore * const pBoosterCore = static_cast<BoosterCore *>(R_ExternalPtrAddr(boosterHandleWrapped));
-   if(nullptr == pBoosterCore) {
-      LOG_0(TraceLevelError, "ERROR GetCurrentModelFeatureGroup_R nullptr == pBoosterCore");
+   const BoosterHandle boosterHandle = static_cast<BoosterHandle>(R_ExternalPtrAddr(boosterHandleWrapped));
+   BoosterShell * const pBoosterShell = BoosterShell::GetBoosterShellFromBoosterHandle(boosterHandle);
+   if(nullptr == pBoosterShell) {
+      // already logged
       return R_NilValue;
    }
+   BoosterCore * const pBoosterCore = pBoosterShell->GetBoosterCore();
 
    if(!IsSingleDoubleVector(indexFeatureGroup)) {
       LOG_0(TraceLevelError, "ERROR GetCurrentModelFeatureGroup_R !IsSingleDoubleVector(indexFeatureGroup)");
@@ -1302,11 +1292,11 @@ SEXP GetCurrentModelFeatureGroup_R(
    SEXP ret = PROTECT(allocVector(REALSXP, static_cast<R_xlen_t>(cValues)));
    EBM_ASSERT(!IsMultiplyError(sizeof(double), cValues)); // we've allocated this memory, so it should be reachable, so these numbers should multiply
 
-   const IntEbmType error = GetCurrentModelFeatureGroup(reinterpret_cast<BoosterHandle>(pBoosterCore), static_cast<IntEbmType>(iFeatureGroup), REAL(ret));
+   const ErrorEbmType error = GetCurrentModelFeatureGroup(boosterHandle, static_cast<IntEbmType>(iFeatureGroup), REAL(ret));
 
    UNPROTECT(1);
 
-   if(IntEbmType { 0 } != error) {
+   if(Error_None != error) {
       LOG_0(TraceLevelWarning, "WARNING GetCurrentModelFeatureGroup_R IntEbmType { 0 } != error");
       return R_NilValue;
    }
@@ -1317,42 +1307,6 @@ SEXP FreeBooster_R(
    SEXP boosterHandleWrapped
 ) {
    BoostingFinalizer(boosterHandleWrapped);
-   return R_NilValue;
-}
-
-SEXP CreateThreadStateBoosting_R(
-   SEXP boosterHandleWrapped
-) {
-   EBM_ASSERT(nullptr != boosterHandleWrapped); // shouldn't be possible
-
-   if(EXTPTRSXP != TYPEOF(boosterHandleWrapped)) {
-      LOG_0(TraceLevelError, "ERROR CreateThreadStateBoosting_R EXTPTRSXP != TYPEOF(boosterHandleWrapped)");
-      return R_NilValue;
-   }
-   const BoosterHandle boosterHandle = static_cast<BoosterHandle>(R_ExternalPtrAddr(boosterHandleWrapped));
-   if(nullptr == boosterHandle) {
-      LOG_0(TraceLevelError, "ERROR CreateThreadStateBoosting_R nullptr == boosterHandle");
-      return R_NilValue;
-   }
-
-   const ThreadStateBoostingHandle threadStateBoostingHandle = CreateThreadStateBoosting(boosterHandle);
-   if(nullptr == threadStateBoostingHandle) {
-      return R_NilValue;
-   }
-
-   SEXP threadStateBoostingHandleWrapped = R_MakeExternalPtr(static_cast<void *>(threadStateBoostingHandle), R_NilValue, R_NilValue); // makes an EXTPTRSXP
-   PROTECT(threadStateBoostingHandleWrapped);
-
-   R_RegisterCFinalizerEx(threadStateBoostingHandleWrapped, &ThreadStateBoostingFinalizer, Rboolean::TRUE);
-
-   UNPROTECT(1);
-   return threadStateBoostingHandleWrapped;
-}
-
-SEXP FreeThreadStateBoosting_R(
-   SEXP threadStateBoostingHandleWrapped
-) {
-   ThreadStateBoostingFinalizer(threadStateBoostingHandleWrapped);
    return R_NilValue;
 }
 
@@ -1468,7 +1422,8 @@ SEXP CreateClassificationInteractionDetector_R(
       pWeights = REAL(weights);
    }
 
-   const InteractionDetectorHandle interactionDetectorHandle = CreateClassificationInteractionDetector(
+   InteractionHandle interactionHandle;
+   const ErrorEbmType error = CreateClassificationInteractionDetector(
       static_cast<IntEbmType>(cTargetClasses),
       countFeatures,
       aFeaturesCategorical,
@@ -1478,20 +1433,21 @@ SEXP CreateClassificationInteractionDetector_R(
       aTargets,
       pWeights,
       aPredictorScores,
-      nullptr
+      nullptr,
+      &interactionHandle
    );
 
-   if(nullptr == interactionDetectorHandle) {
+   if(Error_None != error || nullptr == interactionHandle) {
       return R_NilValue;
    }
 
-   SEXP interactionDetectorHandleWrapped = R_MakeExternalPtr(static_cast<void *>(interactionDetectorHandle), R_NilValue, R_NilValue); // makes an EXTPTRSXP
-   PROTECT(interactionDetectorHandleWrapped);
+   SEXP interactionHandleWrapped = R_MakeExternalPtr(static_cast<void *>(interactionHandle), R_NilValue, R_NilValue); // makes an EXTPTRSXP
+   PROTECT(interactionHandleWrapped);
 
-   R_RegisterCFinalizerEx(interactionDetectorHandleWrapped, &InteractionFinalizer, Rboolean::TRUE);
+   R_RegisterCFinalizerEx(interactionHandleWrapped, &InteractionFinalizer, Rboolean::TRUE);
 
    UNPROTECT(1);
-   return interactionDetectorHandleWrapped;
+   return interactionHandleWrapped;
 }
 
 SEXP CreateRegressionInteractionDetector_R(
@@ -1583,7 +1539,8 @@ SEXP CreateRegressionInteractionDetector_R(
       pWeights = REAL(weights);
    }
 
-   const InteractionDetectorHandle interactionDetectorHandle = CreateRegressionInteractionDetector(
+   InteractionHandle interactionHandle;
+   const ErrorEbmType error = CreateRegressionInteractionDetector(
       countFeatures, 
       aFeaturesCategorical,
       aFeaturesBinCount,
@@ -1592,38 +1549,39 @@ SEXP CreateRegressionInteractionDetector_R(
       aTargets, 
       pWeights,
       aPredictorScores,
-      nullptr
+      nullptr,
+      &interactionHandle
    );
 
-   if(nullptr == interactionDetectorHandle) {
+   if(Error_None != error || nullptr == interactionHandle) {
       return R_NilValue;
    }
-   
-   SEXP interactionDetectorHandleWrapped = R_MakeExternalPtr(static_cast<void *>(interactionDetectorHandle), R_NilValue, R_NilValue); // makes an EXTPTRSXP
-   PROTECT(interactionDetectorHandleWrapped);
 
-   R_RegisterCFinalizerEx(interactionDetectorHandleWrapped, &InteractionFinalizer, Rboolean::TRUE);
+   SEXP interactionHandleWrapped = R_MakeExternalPtr(static_cast<void *>(interactionHandle), R_NilValue, R_NilValue); // makes an EXTPTRSXP
+   PROTECT(interactionHandleWrapped);
+
+   R_RegisterCFinalizerEx(interactionHandleWrapped, &InteractionFinalizer, Rboolean::TRUE);
 
    UNPROTECT(1);
-   return interactionDetectorHandleWrapped;
+   return interactionHandleWrapped;
 }
 
 SEXP CalculateInteractionScore_R(
-   SEXP interactionDetectorHandleWrapped,
+   SEXP interactionHandleWrapped,
    SEXP featureIndexes,
    SEXP countSamplesRequiredForChildSplitMin
 ) {
-   EBM_ASSERT(nullptr != interactionDetectorHandleWrapped); // shouldn't be possible
+   EBM_ASSERT(nullptr != interactionHandleWrapped); // shouldn't be possible
    EBM_ASSERT(nullptr != featureIndexes); // shouldn't be possible
    EBM_ASSERT(nullptr != countSamplesRequiredForChildSplitMin);
 
-   if(EXTPTRSXP != TYPEOF(interactionDetectorHandleWrapped)) {
-      LOG_0(TraceLevelError, "ERROR CalculateInteractionScore_R EXTPTRSXP != TYPEOF(interactionDetectorHandleWrapped)");
+   if(EXTPTRSXP != TYPEOF(interactionHandleWrapped)) {
+      LOG_0(TraceLevelError, "ERROR CalculateInteractionScore_R EXTPTRSXP != TYPEOF(interactionHandleWrapped)");
       return R_NilValue;
    }
-   InteractionCore * pInteractionCore = static_cast<InteractionCore *>(R_ExternalPtrAddr(interactionDetectorHandleWrapped));
-   if(nullptr == pInteractionCore) {
-      LOG_0(TraceLevelError, "ERROR CalculateInteractionScore_R nullptr == pInteractionCore");
+   const InteractionHandle interactionHandle = static_cast<InteractionHandle>(R_ExternalPtrAddr(interactionHandleWrapped));
+   if(nullptr == interactionHandle) {
+      LOG_0(TraceLevelError, "ERROR CalculateInteractionScore_R nullptr == interactionHandle");
       return R_NilValue;
    }
 
@@ -1655,7 +1613,7 @@ SEXP CalculateInteractionScore_R(
    }
 
    FloatEbmType interactionScoreOut;
-   if(0 != CalculateInteractionScore(reinterpret_cast<InteractionDetectorHandle>(pInteractionCore), countDimensions, aFeatureIndexes, countEbmSamplesRequiredForChildSplitMin, &interactionScoreOut)) {
+   if(Error_None != CalculateInteractionScore(interactionHandle, countDimensions, aFeatureIndexes, countEbmSamplesRequiredForChildSplitMin, &interactionScoreOut)) {
       LOG_0(TraceLevelWarning, "WARNING CalculateInteractionScore_R CalculateInteractionScore returned error code");
       return R_NilValue;
    }
@@ -1667,9 +1625,9 @@ SEXP CalculateInteractionScore_R(
 }
 
 SEXP FreeInteractionDetector_R(
-   SEXP interactionDetectorHandleWrapped
+   SEXP interactionHandleWrapped
 ) {
-   InteractionFinalizer(interactionDetectorHandleWrapped);
+   InteractionFinalizer(interactionHandleWrapped);
    return R_NilValue;
 }
 
@@ -1685,8 +1643,6 @@ static const R_CallMethodDef g_exposedFunctions[] = {
    { "GetBestModelFeatureGroup_R", (DL_FUNC)&GetBestModelFeatureGroup_R, 2 },
    { "GetCurrentModelFeatureGroup_R", (DL_FUNC)& GetCurrentModelFeatureGroup_R, 2 },
    { "FreeBooster_R", (DL_FUNC)& FreeBooster_R, 1 },
-   { "CreateThreadStateBoosting_R", (DL_FUNC)&CreateThreadStateBoosting_R, 1 },
-   { "FreeThreadStateBoosting_R", (DL_FUNC)&FreeThreadStateBoosting_R, 1 },
    { "CreateClassificationInteractionDetector_R", (DL_FUNC)&CreateClassificationInteractionDetector_R, 7 },
    { "CreateRegressionInteractionDetector_R", (DL_FUNC)&CreateRegressionInteractionDetector_R, 6 },
    { "CalculateInteractionScore_R", (DL_FUNC)&CalculateInteractionScore_R, 3 },
