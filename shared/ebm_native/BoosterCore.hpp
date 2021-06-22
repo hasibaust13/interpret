@@ -32,6 +32,8 @@ namespace DEFINED_ZONE_NAME {
 #error DEFINED_ZONE_NAME must be defined
 #endif // DEFINED_ZONE_NAME
 
+class BoosterShell;
+
 class BoosterCore final {
 
    // std::atomic_size_t used to be standard layout and trivial, but the C++ standard comitee judged that an error
@@ -68,10 +70,11 @@ class BoosterCore final {
 
    static void DeleteSegmentedTensors(const size_t cFeatureGroups, SegmentedTensor ** const apSegmentedTensors);
 
-   static SegmentedTensor ** InitializeSegmentedTensors(
+   static ErrorEbmType InitializeSegmentedTensors(
       const size_t cFeatureGroups,
       const FeatureGroup * const * const apFeatureGroups,
-      const size_t cVectorLength
+      const size_t cVectorLength,
+      SegmentedTensor *** papSegmentedTensorsOut
    );
 
    INLINE_ALWAYS ~BoosterCore() {
@@ -182,7 +185,8 @@ public:
 
    static void Free(BoosterCore * const pBoosterCore);
 
-   static BoosterCore * Create(
+   static ErrorEbmType Create(
+      BoosterShell * const pBoosterShell,
       const SeedEbmType randomSeed,
       const ptrdiff_t runtimeLearningTypeOrCountTargetClasses,
       const size_t cFeatures,

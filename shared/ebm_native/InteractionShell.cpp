@@ -50,15 +50,19 @@ InteractionShell * InteractionShell::Create() {
    return pNew;
 }
 
-HistogramBucketBase * InteractionShell::GetHistogramBucketBase(const size_t cBytesRequired) {
+HistogramBucketBase * InteractionShell::GetHistogramBucketBase(size_t cBytesRequired) {
    HistogramBucketBase * aBuffer = m_aThreadByteBuffer1;
    if(UNLIKELY(m_cThreadByteBufferCapacity1 < cBytesRequired)) {
-      m_cThreadByteBufferCapacity1 = cBytesRequired << 1;
-      LOG_N(TraceLevelInfo, "Growing InteractionShell::ThreadByteBuffer1 to %zu", m_cThreadByteBufferCapacity1);
+      cBytesRequired <<= 1;
+      m_cThreadByteBufferCapacity1 = cBytesRequired;
+      LOG_N(TraceLevelInfo, "Growing InteractionShell::ThreadByteBuffer1 to %zu", cBytesRequired);
 
       free(aBuffer);
-      aBuffer = static_cast<HistogramBucketBase *>(EbmMalloc<void>(m_cThreadByteBufferCapacity1));
-      m_aThreadByteBuffer1 = aBuffer;
+      aBuffer = static_cast<HistogramBucketBase *>(EbmMalloc<void>(cBytesRequired));
+      m_aThreadByteBuffer1 = aBuffer; // store it before checking it incase it's null so that we don't free old memory
+      if(nullptr == aBuffer) {
+         LOG_0(TraceLevelWarning, "WARNING InteractionShell::GetHistogramBucketBase OutOfMemory");
+      }
    }
    return aBuffer;
 }
@@ -131,10 +135,8 @@ static ErrorEbmType CreateInteractionDetector(
       return Error_OutOfMemory;
    }
 
-   // TODO: pass in the pInteractionShell so that InteractionCore can immediately attach itself to the pInteractionShell
-   //       this is important in R and other languages that might want to exit with longjump because we can attach
-   //       the pInteractionShell object to a managed destructor that'll clean up all our memory allocations
-   InteractionCore * const pInteractionCore = InteractionCore::Create(
+   const ErrorEbmType error = InteractionCore::Create(
+      pInteractionShell,
       runtimeLearningTypeOrCountTargetClasses,
       cFeatures,
       optionalTempParams,
@@ -146,13 +148,11 @@ static ErrorEbmType CreateInteractionDetector(
       aWeights,
       predictorScores
    );
-   if(UNLIKELY(nullptr == pInteractionCore)) {
+   if(Error_None != error) {
       InteractionShell::Free(pInteractionShell);
       LOG_0(TraceLevelWarning, "WARNING CreateInteractionDetector nullptr == pInteractionCore");
       return Error_OutOfMemory;
    }
-
-   pInteractionShell->SetInteractionCore(pInteractionCore); // assume ownership of pInteractionCore
 
    *interactionHandleOut = pInteractionShell->GetHandle();
    return Error_None;

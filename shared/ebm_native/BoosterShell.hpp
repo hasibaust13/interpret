@@ -15,7 +15,6 @@
 #include "ebm_internal.hpp"
 
 #include "HistogramTargetEntry.hpp"
-#include "BoosterCore.hpp"
 
 namespace DEFINED_ZONE_NAME {
 #ifndef DEFINED_ZONE_NAME
@@ -23,6 +22,7 @@ namespace DEFINED_ZONE_NAME {
 #endif // DEFINED_ZONE_NAME
 
 struct HistogramBucketBase;
+class BoosterCore;
 
 class BoosterShell final {
    static constexpr size_t k_handleVerificationOk = 25077; // random 15 bit number
@@ -131,14 +131,14 @@ public:
       return m_pSmallChangeToModelOverwriteSingleSamplingSet;
    }
 
-   HistogramBucketBase * GetHistogramBucketBase(const size_t cBytesRequired);
+   HistogramBucketBase * GetHistogramBucketBase(size_t cBytesRequired);
 
    INLINE_ALWAYS HistogramBucketBase * GetHistogramBucketBase() {
       // call this if the histograms were already allocated and we just need the pointer
       return m_aThreadByteBuffer1;
    }
 
-   bool GrowThreadByteBuffer2(const size_t cByteBoundaries);
+   ErrorEbmType GrowThreadByteBuffer2(const size_t cByteBoundaries);
 
    INLINE_ALWAYS void * GetThreadByteBuffer2() {
       return m_aThreadByteBuffer2;
