@@ -410,7 +410,7 @@ class BaseCoreEBM:
 
         # Split data into train/val
 
-        X_train, X_val, y_train, y_val, w_train, w_val = EBMUtils.ebm_train_test_split(
+        X_train, X_val, y_train, y_val, w_train, w_val = EBMUtils.ebm_train_test_split_new(
             X,
             y,
             w,
@@ -420,7 +420,7 @@ class BaseCoreEBM:
         )
 
         if X_pair is not None:
-            X_pair_train, X_pair_val, y_train, y_val, w_train, w_val = EBMUtils.ebm_train_test_split(
+            X_pair_train, X_pair_val, y_train, y_val, w_train, w_val = EBMUtils.ebm_train_test_split_new(
                 X_pair,
                 y,
                 w,
@@ -593,7 +593,7 @@ class BaseCoreEBM:
         # NOTE: ideally we would store the train/validation split in the
         #       remote processes, but joblib doesn't have a concept
         #       of keeping remote state, so we re-split our sets
-        X_train, X_val, y_train, y_val, w_train, w_val = EBMUtils.ebm_train_test_split(
+        X_train, X_val, y_train, y_val, w_train, w_val = EBMUtils.ebm_train_test_split_new(
             X,
             y,
             w,
@@ -602,7 +602,7 @@ class BaseCoreEBM:
             is_classification=self.model_type == "classification",
         )
 
-        X_pair_train, X_pair_val, y_train, y_val, w_train, w_val = EBMUtils.ebm_train_test_split(
+        X_pair_train, X_pair_val, y_train, y_val, w_train, w_val = EBMUtils.ebm_train_test_split_new(
             X_pair,
             y,
             w,
